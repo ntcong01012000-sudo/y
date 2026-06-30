@@ -4,6 +4,7 @@
   ║       Scan → Fly → Grab → Store (3 retries) → Hop            ║
   ║              Built for LEARNING purposes only                ║
   ║                + AUTO TEAM SELECTION (REMOTE)                ║
+  ║                + DISCORD WEBHOOK NOTIFICATIONS               ║
   ╚══════════════════════════════════════════════════════════════╝
   
   Based on patterns from REDZ HUB V2
@@ -17,23 +18,30 @@
     • No-clip so walls don't block the flight path
     • Fruit ESP to visualize fruits on the map
     • Auto team selection using remote "SetTeam" (fallback to click)
+    • Discord webhook notifications on successful fruit storage
 ]]
 
 -- ═══════════════════════════════════════════════════════════════
--- CONFIGURATION (tweak these to your needs)
+-- CONFIGURATION (can be set externally via getgenv() before loadstring)
 -- ═══════════════════════════════════════════════════════════════
-getgenv().AutoFruitSniper   = true   -- Master toggle for the script
-getgenv().FruitESP          = true   -- Show ESP on fruits
-getgenv().TweenSpeed        = 300    -- Flight speed (studs/sec)
-getgenv().StoreRetries      = 3      -- Max store attempts before giving up
-getgenv().HopDelay          = 3      -- Seconds to wait before server hop
-getgenv().ScanInterval      = 0.5    -- How often to scan for fruits (seconds)
-getgenv().AntiAFK           = true   -- Prevent AFK kick
+-- All settings default to these values if not set externally.
+-- To customize, set them BEFORE executing loadstring, e.g.:
+--   getgenv().Team = 1  -- Pirates
+--   getgenv().DiscordWebhook = "https://discord.com/api/webhooks/..."
+--   loadstring(game:HttpGet("..."))()
 
--- 🆕 Team selection configuration
-getgenv().AutoSelectTeam    = true   -- Enable auto team selection on join
-getgenv().Team              = 0      -- 0 = Marines, 1 = Pirates
-getgenv().TeamSelectDelay   = 3     -- Delay before attempting selection (some servers need it)
+getgenv().AutoFruitSniper   = getgenv().AutoFruitSniper ~= nil and getgenv().AutoFruitSniper or true
+getgenv().FruitESP          = getgenv().FruitESP ~= nil and getgenv().FruitESP or true
+getgenv().TweenSpeed        = getgenv().TweenSpeed or 300
+getgenv().StoreRetries      = getgenv().StoreRetries or 3
+getgenv().HopDelay          = getgenv().HopDelay or 3
+getgenv().ScanInterval      = getgenv().ScanInterval or 0.5
+getgenv().AntiAFK           = getgenv().AntiAFK ~= nil and getgenv().AntiAFK or true
+getgenv().AutoSelectTeam    = getgenv().AutoSelectTeam ~= nil and getgenv().AutoSelectTeam or true
+getgenv().Team              = getgenv().Team or 0        -- 0 = Marines, 1 = Pirates
+getgenv().TeamSelectDelay   = getgenv().TeamSelectDelay or 12
+-- Discord webhook URL (set to nil or empty string to disable)
+getgenv().DiscordWebhook    = getgenv().DiscordWebhook or ""
 
 -- ═══════════════════════════════════════════════════════════════
 -- WAIT FOR GAME TO FULLY LOAD
@@ -58,6 +66,56 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes", 9e9)
 local CommF   = Remotes:WaitForChild("CommF_", 9e9)
 
 local Player = Players.LocalPlayer
+
+-- ═══════════════════════════════════════════════════════════════
+-- DISCORD WEBHOOK SENDER
+-- ═══════════════════════════════════════════════════════════════
+local function SendDiscordWebhook(fruitName, serverInfo)
+    local webhookUrl = getgenv().DiscordWebhook
+    if not webhookUrl or webhookUrl == "" then return end
+
+    local playerName = Player.Name
+    local placeId = game.PlaceId
+    local jobId = game.JobId
+    local serverText = serverInfo or ("Place ID: " .. placeId .. ", Job ID: " .. jobId)
+
+    local embed = {
+        ["title"] = "🍎 Fruit Sniper - Fruit Stored!",
+        ["description"] = "**" .. playerName .. "** has successfully stored a **" .. fruitName .. "**!",
+        ["color"] = 0x00ff00,
+        ["fields"] = {
+            {
+                ["name"] = "Fruit",
+                ["value"] = fruitName,
+                ["inline"] = true
+            },
+            {
+                ["name"] = "Player",
+                ["value"] = playerName,
+                ["inline"] = true
+            },
+            {
+                ["name"] = "Server",
+                ["value"] = serverText,
+                ["inline"] = false
+            }
+        },
+        ["footer"] = {
+            ["text"] = "Auto Fruit Sniper • " .. os.date("%Y-%m-%d %H:%M:%S")
+        }
+    }
+
+    local payload = {
+        ["embeds"] = {embed}
+    }
+
+    pcall(function()
+        local response = game:HttpGet(webhookUrl, true, "POST", {
+            ["Content-Type"] = "application/json"
+        }, HttpService:JSONEncode(payload))
+        print("[FruitSniper] Webhook sent.")
+    end)
+end
 
 -- ═══════════════════════════════════════════════════════════════
 -- IN-GAME GUI NOTIFICATION SYSTEM (unchanged)
@@ -226,7 +284,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════
--- 🆕 AUTO TEAM SELECTION FUNCTION (dùng remote "SetTeam")
+-- AUTO TEAM SELECTION FUNCTION (dùng remote "SetTeam")
 -- ═══════════════════════════════════════════════════════════════
 local function AutoSelectTeam()
   if not getgenv().AutoSelectTeam then
@@ -565,7 +623,7 @@ local function FindFruitInInventory()
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- STORE FRUIT WITH 3 RETRIES (unchanged)
+-- STORE FRUIT WITH 3 RETRIES (modified to send webhook on success)
 -- ═══════════════════════════════════════════════════════════════
 local function StoreFruitWithRetry(fruitTool)
   local maxRetries = getgenv().StoreRetries or 3
@@ -587,6 +645,9 @@ local function StoreFruitWithRetry(fruitTool)
 
     if success and result == true then
       Notify("✅ STORED " .. fruitTool.Name .. " on attempt " .. attempt .. "!", "success", true)
+      -- Send Discord webhook notification
+      local serverInfo = "Place ID: " .. game.PlaceId .. ", Job ID: " .. game.JobId
+      SendDiscordWebhook(fruitTool.Name, serverInfo)
       return true
     else
       Notify("❌ Attempt " .. attempt .. " failed: " .. tostring(result), "error")
@@ -739,7 +800,7 @@ local function WaitForCharacter()
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- 🆕 EXECUTE AUTO TEAM SELECTION (chạy trước main loop)
+-- EXECUTE AUTO TEAM SELECTION (chạy trước main loop)
 -- ═══════════════════════════════════════════════════════════════
 AutoSelectTeam()
 
@@ -753,6 +814,11 @@ Notify("🆔 PlaceId: " .. tostring(CurrentPlaceId), "info")
 Notify("⚡ Speed: " .. tostring(getgenv().TweenSpeed) .. " studs/sec", "info")
 Notify("🔄 Store Retries: " .. tostring(getgenv().StoreRetries), "info")
 Notify("👁️ ESP: " .. (getgenv().FruitESP and "ON" or "OFF"), "info")
+if getgenv().DiscordWebhook and getgenv().DiscordWebhook ~= "" then
+  Notify("💬 Discord Webhook: Enabled", "info")
+else
+  Notify("💬 Discord Webhook: Disabled", "info")
+end
 Notify("──────────────────────────────", "info")
 task.wait(1)
 
