@@ -364,15 +364,20 @@ local root = char:WaitForChild("HumanoidRootPart")
 local hum = char:WaitForChild("Humanoid")
 log("✅ Nhân vật đã sẵn sàng!")
 
--- BƯỚC 3: Dò tìm quái gần nhất với điểm tọa độ tập kết X Y Z
+-- BƯỚC 3: Dịch chuyển ban đầu đến điểm tọa độ tập kết X Y Z và quét tìm quái
 local targetAnchor = getTargetPosition()
-log("🔍 Đang tìm quái gần nhất với tọa độ X Y Z: " .. tostring(targetAnchor))
+log("✈️ Dịch chuyển ban đầu đến tọa độ X Y Z: " .. tostring(targetAnchor))
+teleport(CFrame.new(targetAnchor))
+task.wait(0.5)
 
+log("🔍 Đang tìm quái gần nhất với tọa độ X Y Z...")
 local enemy = nil
 local scanAttempts = 0
 repeat
     enemy = getNearestMonsterToPosition(targetAnchor)
     if not enemy then
+        -- Nếu chưa có quái, đảm bảo đứng ở điểm neo để chờ quái hồi sinh
+        teleport(CFrame.new(targetAnchor))
         task.wait(1)
         scanAttempts = scanAttempts + 1
         if scanAttempts % 5 == 0 then
@@ -428,17 +433,15 @@ if enemy and hum.Health > 0 then
             end
             
             -- Kiểm tra khoảng cách từ vị trí hiện tại đến điểm neo (targetAnchor)
-            -- Nếu bay quá xa (> 2000 studs), tự tử (Reset Character) để bắt đầu lại bước 1
+            -- Nếu bay quá xa (> 200 studs), bay ngược trở về điểm neo X Y Z để quét lại quái
             local currentDistFromAnchor = (root.Position - targetAnchor).Magnitude
-            if currentDistFromAnchor > 2000 then
-                log("⚠️ Phát hiện nhân vật bay quá xa điểm neo (> 2000 studs: " .. math.floor(currentDistFromAnchor) .. " studs)!")
-                log("💀 Tiến hành tự động Reset nhân vật để tránh bị kẹt hoặc lỗi teleport...")
+            if currentDistFromAnchor > 200 then
+                log("⚠️ Nhân vật bay quá xa điểm neo (> 200 studs: " .. math.floor(currentDistFromAnchor) .. " studs)!")
+                log("✈️ Thực hiện bay ngược trở về điểm neo X Y Z...")
                 root.Anchored = false
-                pcall(function()
-                    hum.Health = 0
-                end)
-                task.wait(5)
-                break
+                teleport(CFrame.new(targetAnchor))
+                task.wait(0.5)
+                enemy = nil -- Xóa mục tiêu cũ để bắt đầu quét tìm con quái mới gần điểm neo hơn
             end
 
             -- Kiểm tra xem quái hiện tại còn sống và ở gần không
@@ -463,7 +466,8 @@ if enemy and hum.Health > 0 then
                     task.wait(0.2)
                     root.Anchored = true
                 else
-                    log("⏳ Không tìm thấy quái xung quanh điểm neo, đang đợi quái hồi sinh...")
+                    log("⏳ Không tìm thấy quái xung quanh điểm neo, đang bay về X Y Z chờ quái hồi sinh...")
+                    teleport(CFrame.new(targetAnchor))
                     task.wait(1)
                 end
             else
