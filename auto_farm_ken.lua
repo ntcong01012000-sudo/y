@@ -4,8 +4,11 @@
           → Bám đuổi / Tìm quái mới liên tục đến khi né về 0 → Đổi Server.
 --]]
 
--- Đợi game load xong hoàn toàn
-repeat task.wait() until game:IsLoaded()
+-- Chờ game load xong hoàn toàn mới chạy script
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+task.wait(2) -- Đợi thêm 2 giây để chắc chắn các service và UI của game sẵn sàng
 
 getgenv().AutoFarmKen = true
 getgenv().Team = 1 -- Mặc định: 1 = Pirates (Hải tặc), 0 = Marines (Hải quân)
@@ -65,7 +68,7 @@ local function getTargetPosition()
     elseif currentSea == 2 then
         return Vector3.new(-951, 85, -2995) -- Graveyard (Sea 2)
     else
-        return Vector3.new(900, 15, 1200) -- Sea 1
+        return Vector3.new(5921, 38, 4835) -- Sea 1
     end
 end
 
