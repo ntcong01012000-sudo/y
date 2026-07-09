@@ -33,7 +33,34 @@ local function log(message)
     end
 end
 
--- 1. Thiết lập noclip liên tục chống kẹt
+-- 1. Tự động kết nối lại khi bị Kick hoặc Mất mạng (Anti-Kick / Auto Rejoin)
+task.spawn(function()
+    local success, err = pcall(function()
+        game:GetService("CoreGui").RobloxPromptGui.promptOverlay.ChildAdded:Connect(function(child)
+            if child.Name == "ErrorPrompt" then
+                log("⚠️ Phát hiện bị Kick hoặc Mất kết nối! Đang kết nối lại...")
+                task.wait(2)
+                pcall(function()
+                    local queueteleport = (syn and syn.queue_on_teleport)
+                        or queue_on_teleport
+                        or (fluxus and fluxus.queue_on_teleport)
+                    if queueteleport then
+                        queueteleport('loadstring(readfile("auto_farm_ken.lua"))()')
+                        log("[Anti-Kick] Đã xếp hàng chạy lại script.")
+                    end
+                end)
+                pcall(function()
+                    TeleportService:Teleport(game.PlaceId, plr)
+                end)
+            end
+        end)
+    end)
+    if not success then
+        log("⚠️ Không thể đăng ký tính năng Anti-Kick: " .. tostring(err))
+    end
+end)
+
+-- 2. Thiết lập noclip liên tục chống kẹt
 local noclipConnection
 if noclipConnection then noclipConnection:Disconnect() end
 noclipConnection = RunService.Stepped:Connect(function()
