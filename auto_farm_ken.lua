@@ -427,6 +427,20 @@ if enemy and hum.Health > 0 then
                 break
             end
             
+            -- Kiểm tra khoảng cách từ vị trí hiện tại đến điểm neo (targetAnchor)
+            -- Nếu bay quá xa (> 2000 studs), tự tử (Reset Character) để bắt đầu lại bước 1
+            local currentDistFromAnchor = (root.Position - targetAnchor).Magnitude
+            if currentDistFromAnchor > 2000 then
+                log("⚠️ Phát hiện nhân vật bay quá xa điểm neo (> 2000 studs: " .. math.floor(currentDistFromAnchor) .. " studs)!")
+                log("💀 Tiến hành tự động Reset nhân vật để tránh bị kẹt hoặc lỗi teleport...")
+                root.Anchored = false
+                pcall(function()
+                    hum.Health = 0
+                end)
+                task.wait(5)
+                break
+            end
+
             -- Kiểm tra xem quái hiện tại còn sống và ở gần không
             local targetValid = false
             if enemy and enemy.Parent and enemy:FindFirstChild("HumanoidRootPart") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
