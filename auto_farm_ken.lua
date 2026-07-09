@@ -95,7 +95,7 @@ local function getTargetPosition()
     elseif currentSea == 2 then
         return Vector3.new(-951, 85, -2995) -- Graveyard (Sea 2)
     else
-        return Vector3.new(5921, 38, 4835) -- Sea 1
+        return Vector3.new(1193, 16, 1512) -- Sea 1
     end
 end
 
@@ -368,7 +368,7 @@ log("✅ Nhân vật đã sẵn sàng!")
 local targetAnchor = getTargetPosition()
 log("✈️ Dịch chuyển ban đầu đến tọa độ X Y Z: " .. tostring(targetAnchor))
 teleport(CFrame.new(targetAnchor))
-task.wait(0.5)
+task.wait(2)
 
 log("🔍 Đang tìm quái gần nhất với tọa độ X Y Z...")
 local enemy = nil
