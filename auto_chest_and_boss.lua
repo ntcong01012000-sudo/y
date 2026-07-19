@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 -- =========================================================================
 _G.AutoFarmChest = true
 local ChestTargetLimit = 70
-local FarmSpeed = 350
+local FarmSpeed = 300
 local countChests = 0
 
 -- Kiểm tra thế giới (Sea) hiện tại
