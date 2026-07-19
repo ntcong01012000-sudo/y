@@ -22,7 +22,7 @@ local FruitCustomizerRF = ReplicatedStorage:WaitForChild("Modules"):WaitForChild
 -- =========================================================================
 _G.AutoFarmChest = true
 local ChestTargetLimit = 70
-local FarmSpeed = 350
+local FarmSpeed = 300
 local countChests = 0
 
 -- Cấu hình Sea 3 (Rip Indra)
@@ -35,7 +35,7 @@ local HakiSteps = {
 _G.AutoKillRipIndra = false
 
 -- Cấu hình Sea 2 (Darkbeard / Râu Đen)
-local DarkbeardSummonCFrame = CFrame.new(3777.6, 14.8, -3498.4) -- Vị trí bệ spawn Darkbeard ở Sea 2
+local DarkbeardSummonCFrame = CFrame.new(3780.88, 17.05, -3499.23) -- Vị trí bệ spawn Darkbeard ở Sea 2
 _G.AutoKillDarkbeard = false
 
 -- Biến lưu trữ trạng thái boss đã spawn và server vắng quét sẵn
