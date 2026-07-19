@@ -17,12 +17,6 @@ local ChestTargetLimit = 70 -- Số lượng rương cần nhặt trước khi �
 local FarmSpeed = 350 -- Tốc độ bay đi nhặt rương
 local TravelSpeed = 300 -- Tốc độ bay khi làm sự kiện/diệt boss
 
--- Các Remote kết nối với game
-local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
-local RegisterAttack = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterAttack")
-local RegisterHit = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
-local FruitCustomizerRF = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/FruitCustomizerRF")
-
 -- Tọa độ triệu hồi ở Sea 3 (Rip Indra) và Sea 2 (Darkbeard)
 local IndraSummonCFrame = CFrame.new(-5564.36, 314.57, -2661.53)
 local HakiSteps = {
@@ -35,6 +29,30 @@ local HakiSteps = {
 _G.NextServerId = nil
 local countChests = 0
 local bossSpawned = false
+
+-- Hàm lấy động các Remote của game Blox Fruits để tránh bị treo script ngoài luồng chính
+local function getCommF()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
+    return remotes and remotes:WaitForChild("CommF_", 5)
+end
+
+local function getRegisterAttack()
+    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
+    local net = modules and modules:WaitForChild("Net", 5)
+    return net and net:WaitForChild("RE/RegisterAttack", 5)
+end
+
+local function getRegisterHit()
+    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
+    local net = modules and modules:WaitForChild("Net", 5)
+    return net and net:WaitForChild("RE/RegisterHit", 5)
+end
+
+local function getFruitCustomizerRF()
+    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
+    local net = modules and modules:WaitForChild("Net", 5)
+    return net and net:WaitForChild("RF/FruitCustomizerRF", 5)
+end
 
 -- Hàm phát hiện Sea hiện tại của người chơi
 local function GetCurrentSea()
@@ -53,15 +71,22 @@ local function selectTeam()
     local teamName = "Pirates"
     print("Đang tự động chọn phe: " .. teamName)
     pcall(function()
-        CommF:InvokeServer("SetTeam", teamName)
+        local CommF = getCommF()
+        if CommF then
+            CommF:InvokeServer("SetTeam", teamName)
+        end
     end)
-    -- Fallback click GUI
+    -- Fallback click GUI nếu Remote bị chặn
     pcall(function()
-        local button = LocalPlayer:WaitForChild("PlayerGui", 5)
-            :WaitForChild("Main", 3):WaitForChild("ChooseTeam", 3)
-            :WaitForChild("Container", 2):WaitForChild(teamName, 2)
-            :WaitForChild("Frame", 1):WaitForChild("ViewportFrame", 1)
-            :WaitForChild("TextButton", 1)
+        local playerGui = LocalPlayer:WaitForChild("PlayerGui", 5)
+        local mainGui = playerGui and playerGui:WaitForChild("Main", 3)
+        local chooseTeam = mainGui and mainGui:WaitForChild("ChooseTeam", 3)
+        local container = chooseTeam and chooseTeam:WaitForChild("Container", 2)
+        local button = container and container:WaitForChild(teamName, 2)
+            and container[teamName]:WaitForChild("Frame", 1)
+            and container[teamName].Frame:WaitForChild("ViewportFrame", 1)
+            and container[teamName].Frame.ViewportFrame:WaitForChild("TextButton", 1)
+            
         if button then
             if getconnections then
                 for _, conn in pairs(getconnections(button.MouseButton1Click)) do conn.Function() end
@@ -72,9 +97,16 @@ local function selectTeam()
     end)
 end
 
--- Hàm bay đến đích (Noclip xuyên tường, không dùng Reset TP)
+-- Hàm bay đến đích (Noclip xuyên tường, không dùng Reset TP, tránh kẹt luồng chính)
 local function bayDen(targetCFrame, speed)
-    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local character = LocalPlayer.Character
+    if not character then
+        pcall(function()
+            character = LocalPlayer.CharacterAdded:Wait()
+        end)
+    end
+    if not character then return end
+    
     local hrp = character:WaitForChild("HumanoidRootPart", 10)
     if not hrp then return end
     
@@ -102,13 +134,20 @@ local function bayDen(targetCFrame, speed)
     end
 end
 
--- Hàm kiểm tra vật phẩm hiếm trong balo/tay nhân vật
+-- Hàm kiểm tra an toàn vật phẩm hiếm (Chén Thánh hoặc Fist of Darkness) trong Balo hoặc trên tay
 local function checkRareItems()
-    local function containsRareItem(container)
-        if not container then return false end
-        return container:FindFirstChild("God's Chalice") or container:FindFirstChild("Fist of Darkness")
-    end
-    return containsRareItem(LocalPlayer:FindFirstChild("Backpack")) or containsRareItem(LocalPlayer.Character)
+    local hasItem = false
+    pcall(function()
+        local backpack = LocalPlayer:FindFirstChild("Backpack")
+        local character = LocalPlayer.Character
+        
+        if backpack and (backpack:FindFirstChild("God's Chalice") or backpack:FindFirstChild("Fist of Darkness")) then
+            hasItem = true
+        elseif character and (character:FindFirstChild("God's Chalice") or character:FindFirstChild("Fist of Darkness")) then
+            hasItem = true
+        end
+    end)
+    return hasItem
 end
 
 -- Hàm tự trang bị vật phẩm hiếm lên tay
@@ -127,7 +166,10 @@ end
 local function KichHoatHaki()
     local character = LocalPlayer.Character
     if character and not character:FindFirstChild("HasBuso") then
-        pcall(function() CommF:InvokeServer("Buso") end)
+        pcall(function()
+            local CommF = getCommF()
+            if CommF then CommF:InvokeServer("Buso") end
+        end)
     end
 end
 
@@ -207,7 +249,7 @@ local function hopLowServerFast()
     end
     
     if Server then
-        pcall(function() ReplicatedStorage:WaitForChild("__ServerBrowser"):InvokeServer("teleport", Server.id) end)
+        pcall(function() ReplicatedStorage:WaitForChild("__ServerBrowser", 5):InvokeServer("teleport", Server.id) end)
     end
 end
 
@@ -224,10 +266,12 @@ local function thucHienHopServer()
     if _G.NextServerId then
         print("✈️ Dịch chuyển ngay lập tức đến Server đã quét sẵn: " .. _G.NextServerId)
         local teleportSuccess, teleportErr = pcall(function()
-            return ReplicatedStorage:WaitForChild("__ServerBrowser"):InvokeServer("teleport", _G.NextServerId)
+            return ReplicatedStorage:WaitForChild("__ServerBrowser", 5):InvokeServer("teleport", _G.NextServerId)
         end)
         if not teleportSuccess then
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, _G.NextServerId, LocalPlayer)
+            pcall(function()
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, _G.NextServerId, LocalPlayer)
+            end)
         end
     else
         print("⚠️ Chưa có server quét sẵn. Đang tìm nhanh...")
@@ -295,8 +339,11 @@ end)
 
 -- Hàm đổi màu Haki
 local function equipHakiColor(colorName)
-    local args = { [1] = { ["StorageName"] = colorName, ["Type"] = "AuraSkin", ["Context"] = "Equip" } }
-    pcall(function() FruitCustomizerRF:InvokeServer(unpack(args)) end)
+    local FruitCustomizerRF = getFruitCustomizerRF()
+    if FruitCustomizerRF then
+        local args = { [1] = { ["StorageName"] = colorName, ["Type"] = "AuraSkin", ["Context"] = "Equip" } }
+        pcall(function() FruitCustomizerRF:InvokeServer(unpack(args)) end)
+    end
 end
 
 -- Kích hoạt 3 nút Haki
@@ -334,6 +381,8 @@ local function startAutoKillRipIndra()
     _G.AutoKillBoss = true
     bossSpawned = false
     local hitFunction = LayHamHitGoc()
+    local RegisterAttack = getRegisterAttack()
+    local RegisterHit = getRegisterHit()
     
     local globalNoclip
     globalNoclip = RunService.Stepped:Connect(function()
@@ -380,11 +429,11 @@ local function startAutoKillRipIndra()
                             if weapon then
                                 local targetPart = boss:FindFirstChild("Head") or hrp
                                 local targetsList = {{boss, targetPart}}
-                                RegisterAttack:FireServer(0)
+                                if RegisterAttack then RegisterAttack:FireServer(0) end
                                 if hitFunction then
                                     pcall(function() hitFunction(targetPart, targetsList) end)
                                 else
-                                    RegisterHit:FireServer(targetPart, targetsList)
+                                    if RegisterHit then RegisterHit:FireServer(targetPart, targetsList) end
                                 end
                                 pcall(function() VirtualUser:Button1Down(Vector2.new(1280, 720)) end)
                             end
@@ -470,6 +519,8 @@ local function startAutoKillDarkbeard()
     _G.AutoKillBoss = true
     bossSpawned = false
     local hitFunction = LayHamHitGoc()
+    local RegisterAttack = getRegisterAttack()
+    local RegisterHit = getRegisterHit()
     
     local globalNoclip
     globalNoclip = RunService.Stepped:Connect(function()
@@ -516,11 +567,11 @@ local function startAutoKillDarkbeard()
                             if weapon then
                                 local targetPart = boss:FindFirstChild("Head") or hrp
                                 local targetsList = {{boss, targetPart}}
-                                RegisterAttack:FireServer(0)
+                                if RegisterAttack then RegisterAttack:FireServer(0) end
                                 if hitFunction then
                                     pcall(function() hitFunction(targetPart, targetsList) end)
                                 else
-                                    RegisterHit:FireServer(targetPart, targetsList)
+                                    if RegisterHit then RegisterHit:FireServer(targetPart, targetsList) end
                                 end
                                 pcall(function() VirtualUser:Button1Down(Vector2.new(1280, 720)) end)
                             end
@@ -547,6 +598,32 @@ end
 -- =========================================================================
 -- VÒNG LẶP CHÍNH FARM RƯƠNG & KHỞI ĐỘNG SỰ KIỆN BOSS
 -- =========================================================================
+
+-- Hàm lấy rương gần nhất
+local function getNearestChest()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+    local myPos = character.HumanoidRootPart.Position
+    
+    local chests = CollectionService:GetTagged("_ChestTagged")
+    local nearestChest = nil
+    local shortestDistance = math.huge
+    
+    for _, chest in ipairs(chests) do
+        if chest:IsA("BasePart") or chest:IsA("Model") then
+            if not chest:GetAttribute("IsDisabled") then
+                local chestPos = chest:GetPivot().Position
+                local dist = (chestPos - myPos).Magnitude
+                if dist < shortestDistance then
+                    shortestDistance = dist
+                    nearestChest = chest
+                end
+            end
+        end
+    end
+    
+    return nearestChest
+end
 
 task.spawn(function()
     task.wait(2)
@@ -575,8 +652,8 @@ task.spawn(function()
         task.wait()
         
         -- KIỂM TRA PHÁT HIỆN VẬT PHẨM HIẾM ĐỂ KHỞI CHẠY BOSS EVENT
-        local hasChalice = checkRareItems()
-        if hasChalice then
+        local hasRareItem = checkRareItems()
+        if hasRareItem then
             print("🎁 PHÁT HIỆN VẬT PHẨM SỰ KIỆN! DỪNG AUTO FARM RƯƠNG ĐỂ TRIỆU HỒI BOSS...")
             _G.AutoFarmChest = false
             globalNoclip:Disconnect()
