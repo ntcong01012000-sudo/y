@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 -- =========================================================================
 _G.AutoFarmChest = true
 local ChestTargetLimit = 70
-local FarmSpeed = 350
+local FarmSpeed = 300
 local countChests = 0
 
 -- Cấu hình Sea 3 (Rip Indra)
