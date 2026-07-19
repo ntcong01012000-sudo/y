@@ -9,12 +9,6 @@ local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Các Remote của game Blox Fruits
-local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
-local RegisterAttack = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterAttack")
-local RegisterHit = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
-local FruitCustomizerRF = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/FruitCustomizerRF")
-
 -- Cấu hình tọa độ bệ triệu hồi Rip Indra mới yêu cầu
 local SummonCFrame = CFrame.new(-5564.36, 314.57, -2661.53)
 local TravelSpeed = 300 -- Tốc độ bay (Speed: 300)
@@ -39,10 +33,78 @@ local HakiSteps = {
 _G.AutoKillRipIndra = false
 local bossSpawned = false
 
+-- Hàm lấy động các Remote của game Blox Fruits để tránh bị treo script ngoài luồng chính
+local function getCommF()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
+    return remotes and remotes:WaitForChild("CommF_", 5)
+end
+
+local function getRegisterAttack()
+    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
+    local net = modules and modules:WaitForChild("Net", 5)
+    return net and net:WaitForChild("RE/RegisterAttack", 5)
+end
+
+local function getRegisterHit()
+    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
+    local net = modules and modules:WaitForChild("Net", 5)
+    return net and net:WaitForChild("RE/RegisterHit", 5)
+end
+
+local function getFruitCustomizerRF()
+    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
+    local net = modules and modules:WaitForChild("Net", 5)
+    return net and net:WaitForChild("RF/FruitCustomizerRF", 5)
+end
+
+-- Hàm tự động chọn phe Pirates để vào game tránh bị kẹt màn hình chọn đội
+local function selectTeam()
+    local teamName = "Pirates"
+    print("Đang tự động chọn phe: " .. teamName)
+    pcall(function()
+        local CommF = getCommF()
+        if CommF then
+            CommF:InvokeServer("SetTeam", teamName)
+        end
+    end)
+    -- Click GUI đệ quy an toàn
+    pcall(function()
+        local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if playerGui then
+            for _, v in ipairs(playerGui:GetDescendants()) do
+                if v:IsA("TextButton") and (string.find(v.Name, teamName) or string.find(v.Text, teamName)) then
+                    local clicked = false
+                    if getconnections then
+                        for _, conn in pairs(getconnections(v.MouseButton1Click)) do
+                            conn.Function()
+                            clicked = true
+                        end
+                    end
+                    if not clicked and firesignal then
+                        firesignal(v.MouseButton1Click)
+                        clicked = true
+                    end
+                    if not clicked then
+                        pcall(function() v:Click() end)
+                    end
+                end
+            end
+        end
+    end)
+end
+
 -- Hàm bay đến đích với tốc độ 300 kèm Noclip xuyên tường
 local function bayDen(targetCFrame, speed)
-    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local hrp = character:WaitForChild("HumanoidRootPart")
+    local character = LocalPlayer.Character
+    if not character then
+        pcall(function()
+            character = LocalPlayer.CharacterAdded:Wait()
+        end)
+    end
+    if not character then return end
+    
+    local hrp = character:WaitForChild("HumanoidRootPart", 10)
+    if not hrp then return end
     
     local distance = (targetCFrame.Position - hrp.Position).Magnitude
     
@@ -55,8 +117,8 @@ local function bayDen(targetCFrame, speed)
         -- Bật Noclip khi bay để không bị kẹt địa hình
         local noclip
         noclip = RunService.Stepped:Connect(function()
-            if character then
-                for _, part in ipairs(character:GetDescendants()) do
+            if LocalPlayer.Character then
+                for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
                     if part:IsA("BasePart") then
                         part.CanCollide = false
                     end
@@ -76,16 +138,19 @@ end
 
 -- Hàm đổi màu Haki
 local function equipHakiColor(colorName)
-    local args = {
-        [1] = {
-            ["StorageName"] = colorName,
-            ["Type"] = "AuraSkin",
-            ["Context"] = "Equip"
+    local FruitCustomizerRF = getFruitCustomizerRF()
+    if FruitCustomizerRF then
+        local args = {
+            [1] = {
+                ["StorageName"] = colorName,
+                ["Type"] = "AuraSkin",
+                ["Context"] = "Equip"
+            }
         }
-    }
-    pcall(function()
-        FruitCustomizerRF:InvokeServer(unpack(args))
-    end)
+        pcall(function()
+            FruitCustomizerRF:InvokeServer(unpack(args))
+        end)
+    end
 end
 
 -- Hàm thực hiện kích hoạt tuần tự cả 3 nút Haki pháo đài
@@ -159,7 +224,8 @@ local function KichHoatHaki()
     local character = LocalPlayer.Character
     if character and not character:FindFirstChild("HasBuso") then
         pcall(function()
-            CommF:InvokeServer("Buso")
+            local CommF = getCommF()
+            if CommF then CommF:InvokeServer("Buso") end
         end)
     end
 end
@@ -198,43 +264,84 @@ local function LayHamHitGoc()
     return nil
 end
 
--- Hàm chuyển Server thông minh (Hop Server)
+-- Hàm đổi sang Server ít người chơi (Quét diện rộng 20 trang để tìm ra server vắng nhất có > 3 người và bypass lỗi 773)
 local function hopServer()
-    print("🔄 Đang quét danh sách Server công khai để chuyển Server...")
-    local PlaceID = game.PlaceId
+    print("🔄 Bắt đầu quét diện rộng tìm kiếm Server ít người chơi nhất...")
+    local CurrentPlaceId = game.PlaceId
+    local Player = LocalPlayer
     
-    local function teleportRandomServer()
-        local success, result = pcall(function()
-            -- Gọi API Roblox lấy danh sách server
-            local url = "https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100"
-            local servers = HttpService:JSONDecode(game:HttpGet(url))
-            local candidateServers = {}
-            
-            for _, sv in ipairs(servers.data) do
-                if tonumber(sv.playing) < tonumber(sv.maxPlayers) and sv.id ~= game.JobId then
-                    table.insert(candidateServers, sv.id)
+    while true do
+        local apiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100"
+        
+        local function ListServers(cursor)
+            local success, raw = pcall(function()
+                return game:HttpGet(apiUrl .. ((cursor and "&cursor=" .. cursor) or ""))
+            end)
+            if success and raw then
+                return HttpService:JSONDecode(raw)
+            end
+            return nil
+        end
+        
+        local Next
+        local pageAttempts = 0
+        local maxPages = 20 -- Quét tối đa 20 trang để tìm server vắng nhất
+        local candidateServers = {}
+        
+        pcall(function()
+            repeat 
+                local Servers = ListServers(Next)
+                pageAttempts = pageAttempts + 1
+                
+                if Servers and Servers.data then
+                    for _, server in pairs(Servers.data) do
+                        local playing = tonumber(server.playing)
+                        local maxPlayers = tonumber(server.maxPlayers)
+                        
+                        -- Lọc các server an toàn (> 3 người để tránh lỗi 773) và còn chỗ trống
+                        if server.id ~= game.JobId and playing and maxPlayers
+                           and playing < (maxPlayers - 1) and playing > 3 then
+                            table.insert(candidateServers, server)
+                        end
+                    end
+                    Next = Servers.nextPageCursor
+                else
+                    break
                 end
-            end
-            
-            if #candidateServers > 0 then
-                local randomServerId = candidateServers[math.random(1, #candidateServers)]
-                print("Dịch chuyển đến Server ID: " .. randomServerId)
-                TeleportService:TeleportToPlaceInstance(PlaceID, randomServerId, LocalPlayer)
-            else
-                print("Không tìm thấy server trống, thực hiện Teleport mặc định...")
-                TeleportService:Teleport(PlaceID, LocalPlayer)
-            end
+                
+                task.wait(0.1)
+            until not Next or pageAttempts >= maxPages
         end)
         
-        if not success then
-            warn("Lỗi khi tìm server: " .. tostring(result) .. ". Đang fallback teleport mặc định...")
-            TeleportService:Teleport(PlaceID, LocalPlayer)
+        local Server = nil
+        if #candidateServers > 0 then
+            table.sort(candidateServers, function(a, b)
+                return tonumber(a.playing) < tonumber(b.playing)
+            end)
+            Server = candidateServers[1]
         end
-    end
-
-    -- Đổi server
-    while task.wait(2) do
-        teleportRandomServer()
+        
+        if Server then
+            print(string.format("🏆 Đã tìm thấy Server vắng: %d/%d người chơi. Đang dịch chuyển...", Server.playing, Server.maxPlayers))
+            local teleportSuccess, teleportErr = pcall(function()
+                return ReplicatedStorage:WaitForChild("__ServerBrowser", 5):InvokeServer("teleport", Server.id)
+            end)
+            
+            if not teleportSuccess then
+                warn("⚠️ Dịch chuyển qua __ServerBrowser thất bại: " .. tostring(teleportErr))
+                print("🔄 Đang thử cách dịch chuyển dự phòng...")
+                task.wait(2)
+                pcall(function()
+                    TeleportService:TeleportToPlaceInstance(CurrentPlaceId, Server.id, Player)
+                end)
+                task.wait(5)
+            else
+                task.wait(15)
+            end
+        else
+            warn("⚠️ Không tìm thấy server trống hợp lệ. Quét lại sau 5 giây...")
+            task.wait(5)
+        end
     end
 end
 
@@ -243,6 +350,8 @@ local function startAutoKillRipIndra()
     _G.AutoKillRipIndra = true
     bossSpawned = false -- Reset trạng thái xác nhận boss spawn
     local hitFunction = LayHamHitGoc()
+    local RegisterAttack = getRegisterAttack()
+    local RegisterHit = getRegisterHit()
     
     -- Bật Noclip liên tục khi đang farm boss
     local globalNoclip
@@ -300,14 +409,14 @@ local function startAutoKillRipIndra()
                                 local targetPart = boss:FindFirstChild("Head") or hrp
                                 local targetsList = {{boss, targetPart}}
                                 
-                                RegisterAttack:FireServer(0)
+                                if RegisterAttack then RegisterAttack:FireServer(0) end
                                 
                                 if hitFunction then
                                     pcall(function()
                                         hitFunction(targetPart, targetsList)
                                     end)
                                 else
-                                    RegisterHit:FireServer(targetPart, targetsList)
+                                    if RegisterHit then RegisterHit:FireServer(targetPart, targetsList) end
                                 end
                                 
                                 pcall(function()
@@ -320,7 +429,7 @@ local function startAutoKillRipIndra()
                     -- Không tìm thấy boss
                     -- Nếu trước đó boss đã spawn thực tế và bây giờ biến mất -> Xác nhận boss ĐÃ BỊ TIÊU DIỆT
                     if bossSpawned then
-                        print("🎉 Boss Rip Indra đã bị tiêu diệt hoàn toàn! Chuẩn bị chuyển Server... 🎉")
+                        print("🎉 Boss Rip Indra đã bị tiêu diệt hoàn toàn! Chu chuẩn bị chuyển Server... 🎉")
                         _G.AutoKillRipIndra = false
                         globalNoclip:Disconnect()
                         task.wait(1.5)
@@ -342,6 +451,10 @@ end
 
 -- VÒNG LẶP CHÍNH: Giám sát God's Chalice mỗi 1 giây
 task.spawn(function()
+    task.wait(2)
+    selectTeam() -- Tự chọn đội
+    task.wait(2)
+    
     print("========== SCRIPT GIÁM SÁT CHÉN THÁNH (GOD'S CHALICE) ĐÃ KHỞI CHẠY ==========")
     while true do
         task.wait(1)
