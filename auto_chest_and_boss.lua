@@ -66,7 +66,7 @@ local function GetCurrentSea()
     end
 end
 
--- Hàm tự động chọn phe Pirates
+-- Hàm tự động chọn phe Pirates (Đã tối ưu hóa click đệ quy an toàn tuyệt đối)
 local function selectTeam()
     local teamName = "Pirates"
     print("Đang tự động chọn phe: " .. teamName)
@@ -76,22 +76,27 @@ local function selectTeam()
             CommF:InvokeServer("SetTeam", teamName)
         end
     end)
-    -- Fallback click GUI nếu Remote bị chặn
+    -- Click GUI đệ quy an toàn, không lo lỗi đường dẫn UI
     pcall(function()
-        local playerGui = LocalPlayer:WaitForChild("PlayerGui", 5)
-        local mainGui = playerGui and playerGui:WaitForChild("Main", 3)
-        local chooseTeam = mainGui and mainGui:WaitForChild("ChooseTeam", 3)
-        local container = chooseTeam and chooseTeam:WaitForChild("Container", 2)
-        local button = container and container:WaitForChild(teamName, 2)
-            and container[teamName]:WaitForChild("Frame", 1)
-            and container[teamName].Frame:WaitForChild("ViewportFrame", 1)
-            and container[teamName].Frame.ViewportFrame:WaitForChild("TextButton", 1)
-            
-        if button then
-            if getconnections then
-                for _, conn in pairs(getconnections(button.MouseButton1Click)) do conn.Function() end
-            elseif firesignal then
-                firesignal(button.MouseButton1Click)
+        local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if playerGui then
+            for _, v in ipairs(playerGui:GetDescendants()) do
+                if v:IsA("TextButton") and (string.find(v.Name, teamName) or string.find(v.Text, teamName)) then
+                    local clicked = false
+                    if getconnections then
+                        for _, conn in pairs(getconnections(v.MouseButton1Click)) do
+                            conn.Function()
+                            clicked = true
+                        end
+                    end
+                    if not clicked and firesignal then
+                        firesignal(v.MouseButton1Click)
+                        clicked = true
+                    end
+                    if not clicked then
+                        pcall(function() v:Click() end)
+                    end
+                end
             end
         end
     end)
@@ -479,12 +484,12 @@ local function GetDarkbeard()
     return nil, nil
 end
 
--- Triệu hồi Darkbeard
+-- Triệu hồi Darkbeard (Đã tối ưu hóa đường dẫn an toàn tuyệt đối, tránh lỗi Member of Folder)
 local function trieuHoiDarkbeard()
-    local summonerPart = workspace:WaitForChild("Map", 5)
-        and workspace.Map:WaitForChild("DarkbeardArena", 5)
-        and workspace.Map.DarkbeardArena:WaitForChild("Summoner", 5)
-        and workspace.Map.DarkbeardArena.Summoner:WaitForChild("Detection", 5)
+    local map = workspace:WaitForChild("Map", 5)
+    local darkbeardArena = map and map:WaitForChild("DarkbeardArena", 5)
+    local summoner = darkbeardArena and darkbeardArena:WaitForChild("Summoner", 5)
+    local summonerPart = summoner and summoner:WaitForChild("Detection", 5)
         
     if summonerPart then
         print("Đang bay đến bệ triệu hồi Darkbeard...")
