@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 -- =========================================================================
 _G.AutoFarmChest = true
 local ChestTargetLimit = 70
-local FarmSpeed = 301
+local FarmSpeed = 350
 local countChests = 0
 
 -- Kiểm tra thế giới (Sea) hiện tại
@@ -201,7 +201,7 @@ local function equipRareItem()
 end
 
 -- =========================================================================
--- HỌP SERVER VỚI KIỂM SOÁT THỬ LẠI LIÊN TỤC
+-- HỌP SERVER CÓ ƯU TIÊN SERVER CÓ ĐÚNG 1 NGƯỜI CHƠI
 -- =========================================================================
 local function hopLowServerFast()
     local CurrentPlaceId = game.PlaceId
@@ -214,8 +214,9 @@ local function hopLowServerFast()
     
     local Server, Next
     local pageAttempts = 0
-    local maxPages = 3
+    local maxPages = 5
     local candidateServers = {}
+    local fallbackServers = {}
     local visited = getVisitedServers()
     
     pcall(function()
@@ -226,21 +227,27 @@ local function hopLowServerFast()
                 for _, s in pairs(Servers.data) do
                     local playing = tonumber(s.playing)
                     local maxPlayers = tonumber(s.maxPlayers)
-                    if s.id ~= game.JobId and not visited[s.id] and playing and maxPlayers and playing < (maxPlayers - 1) and playing >= 1 then
-                        table.insert(candidateServers, s)
+                    if s.id ~= game.JobId and not visited[s.id] and playing and maxPlayers and playing < (maxPlayers - 1) then
+                        if playing == 1 then
+                            table.insert(candidateServers, s)
+                        else
+                            table.insert(fallbackServers, s)
+                        end
                     end
                 end
                 Next = Servers.nextPageCursor
             else
                 break
             end
-            task.wait(0.1)
+            task.wait(0.2)
         until #candidateServers > 0 or not Next or pageAttempts >= maxPages
     end)
     
     if #candidateServers > 0 then
-        table.sort(candidateServers, function(a, b) return tonumber(a.playing) < tonumber(b.playing) end)
         Server = candidateServers[1]
+    elseif #fallbackServers > 0 then
+        table.sort(fallbackServers, function(a, b) return tonumber(a.playing) < tonumber(b.playing) end)
+        Server = fallbackServers[1]
     end
     
     if Server then
@@ -378,14 +385,11 @@ local function attackBoss(boss, hitFunc, regAttack, regHit)
     local hrp = boss:FindFirstChild("HumanoidRootPart")
     local hum = boss:FindFirstChild("Humanoid")
     if hrp and hum and hum.Health > 0 then
-        -- Vô hiệu hóa Animator của boss
         local anim = hum:FindFirstChild("Animator")
         if anim then anim:Destroy() end
         
-        -- Bay bám sát cách đầu boss 12 studs
         bayDen(hrp.CFrame * CFrame.new(0, 12, 0), 300)
         
-        -- Kích hoạt Haki vũ trang
         pcall(function()
             local CommF = getCommF()
             if CommF then CommF:InvokeServer("Buso") end
@@ -406,7 +410,6 @@ local function attackBoss(boss, hitFunc, regAttack, regHit)
     end
 end
 
--- Lấy hàm hit gốc nếu executor hỗ trợ để tối ưu sát thương
 local function getHitFunction()
     if getsenv then
         for _, s in ipairs(LocalPlayer.PlayerScripts:GetChildren()) do
@@ -448,7 +451,6 @@ local function processRipIndraSummon()
     bayDen(SummonCFrame, 300)
     task.wait(2)
     
-    -- Bắt đầu đánh boss Rip Indra
     _G.AutoKillRipIndra = true
     bossSpawned = false
     local hitFunc = getHitFunction()
@@ -470,7 +472,6 @@ local function processRipIndraSummon()
                 local enemies = workspace:FindFirstChild("Enemies")
                 local boss = nil
                 
-                -- Tìm boss ở Workspace
                 if enemies then
                     for _, enemy in ipairs(enemies:GetChildren()) do
                         if string.find(enemy.Name, "rip_indra") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
@@ -481,7 +482,6 @@ local function processRipIndraSummon()
                     end
                 end
                 
-                -- Tìm boss ở ReplicatedStorage
                 if not boss then
                     for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
                         if string.find(obj.Name, "rip_indra") and obj:FindFirstChild("Humanoid") then
@@ -535,7 +535,6 @@ local function summonDarkbeard()
                 pcall(function() firetouchinterest(char.HumanoidRootPart, detection, 0) end)
                 pcall(function() firetouchinterest(char.HumanoidRootPart, detection, 1) end)
             else
-                -- Dự phòng: Bay trực tiếp chạm vào CFrame bệ triệu hồi
                 char.HumanoidRootPart.CFrame = detection.CFrame
             end
         end
@@ -558,7 +557,6 @@ local function processDarkbeardSummon()
     summonDarkbeard()
     task.wait(2)
     
-    -- Bắt đầu đánh boss Darkbeard
     _G.AutoKillDarkbeard = true
     bossSpawned = false
     local hitFunc = getHitFunction()
@@ -580,7 +578,6 @@ local function processDarkbeardSummon()
                 local enemies = workspace:FindFirstChild("Enemies")
                 local boss = nil
                 
-                -- Tìm Râu Đen ở Workspace
                 if enemies then
                     for _, enemy in ipairs(enemies:GetChildren()) do
                         if string.find(enemy.Name, "Darkbeard") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
@@ -591,7 +588,6 @@ local function processDarkbeardSummon()
                     end
                 end
                 
-                -- Tìm Râu Đen ở ReplicatedStorage
                 if not boss then
                     for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
                         if string.find(obj.Name, "Darkbeard") and obj:FindFirstChild("Humanoid") then
@@ -632,7 +628,7 @@ task.spawn(function()
         if hasRare then hadRareItem = true end
         
         if hadRareItem and not hasRare then
-            task.wait(2) -- Chờ balo đồng bộ
+            task.wait(2)
             if not checkRareItems() then
                 local boss = nil
                 local enemies = workspace:FindFirstChild("Enemies")
@@ -655,7 +651,6 @@ task.spawn(function()
                     end
                 end
                 
-                -- Mất vật phẩm mà boss không xuất hiện -> Đổi server ngay lập tức
                 if not boss then
                     print("🚨 CẢNH BÁO: Mất vật phẩm sự kiện nhưng không tìm thấy Boss! Tự động đổi Server...")
                     task.wait(1)
@@ -668,7 +663,7 @@ task.spawn(function()
 end)
 
 -- =========================================================================
--- LUỒNG QUÉT TÌM SERVER VẮNG CHẠY SONG SONG
+-- LUỒNG QUÉT TÌM SERVER 1 NGƯỜI CHƠI CHẠY SONG SONG
 -- =========================================================================
 task.spawn(function()
     while true do
@@ -689,6 +684,7 @@ task.spawn(function()
                 local Next
                 local pageAttempts = 0
                 local candidateServers = {}
+                local fallbackServers = {}
                 local visited = getVisitedServers()
                 
                 repeat 
@@ -698,8 +694,12 @@ task.spawn(function()
                         for _, server in pairs(Servers.data) do
                             local playing = tonumber(server.playing)
                             local maxPlayers = tonumber(server.maxPlayers)
-                            if server.id ~= game.JobId and not visited[server.id] and playing and maxPlayers and playing < (maxPlayers - 1) and playing >= 1 then
-                                table.insert(candidateServers, server)
+                            if server.id ~= game.JobId and not visited[server.id] and playing and maxPlayers and playing < (maxPlayers - 1) then
+                                if playing == 1 then
+                                    table.insert(candidateServers, server)
+                                else
+                                    table.insert(fallbackServers, server)
+                                end
                             end
                         end
                         Next = Servers.nextPageCursor
@@ -707,12 +707,19 @@ task.spawn(function()
                         break
                     end
                     task.wait(0.2)
-                until #candidateServers > 0 or not Next or pageAttempts >= 3
+                until #candidateServers > 0 or not Next or pageAttempts >= 5
                 
+                local selectedServer = nil
                 if #candidateServers > 0 then
-                    table.sort(candidateServers, function(a, b) return tonumber(a.playing) < tonumber(b.playing) end)
-                    _G.NextServerId = candidateServers[1].id
-                    print("📡 [Quét Server Ngầm] Đã lưu trữ sẵn Server vắng: " .. candidateServers[1].playing .. " người chơi.")
+                    selectedServer = candidateServers[1]
+                elseif #fallbackServers > 0 then
+                    table.sort(fallbackServers, function(a, b) return tonumber(a.playing) < tonumber(b.playing) end)
+                    selectedServer = fallbackServers[1]
+                end
+                
+                if selectedServer then
+                    _G.NextServerId = selectedServer.id
+                    print("📡 [Quét Server Ngầm] Đã lưu trữ sẵn Server vắng: " .. selectedServer.playing .. " người chơi.")
                 end
             end)
         end
