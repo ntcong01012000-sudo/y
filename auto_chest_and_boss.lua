@@ -28,7 +28,7 @@ local countChests = 0
 -- Cấu hình Sea 3 (Rip Indra)
 local SummonCFrame = CFrame.new(-5564.36, 314.57, -2661.53) -- Bệ spawn Rip Indra
 local HakiSteps = {
-    { Name = "Snow White", Position = CFrame.new(-4971.72, 335.96, -3720.06) },
+    { Name = "Snow White", Position = CFrame.new(-4971.72, 334.96, -3720.06) },
     { Name = "Pure Red", Position = CFrame.new(-5414.92, 314.26, -2212.20) },
     { Name = "Winter Sky", Position = CFrame.new(-5420.26, 1089.36, -2666.82) }
 }
