@@ -14,12 +14,8 @@ local LocalPlayer = Players.LocalPlayer
 -- =========================================================================
 _G.AutoFarmChest = true
 local ChestTargetLimit = 70
-local FarmSpeed = 300
+local FarmSpeed = 350
 local countChests = 0
-
--- Kiểm tra thế giới (Sea) hiện tại
-local isWorld3 = (game.PlaceId == 7449423635)
-local isWorld2 = (game.PlaceId == 444227218)
 
 -- Cấu hình Sea 3 (Rip Indra)
 local SummonCFrame = CFrame.new(-5564.36, 314.57, -2661.53) -- Bệ spawn Rip Indra
@@ -175,28 +171,34 @@ local function bayDen(targetCFrame, speed)
 end
 
 -- =========================================================================
--- HỆ THỐNG VẬT PHẨM HIẾM (CÚP / FIST)
+-- HỆ THỐNG VẬT PHẨM HIẾM (CÚP / FIST) - PHÁT HIỆN TRỰC TIẾP KHÔNG DÙNG PLACEID
 -- =========================================================================
 local function checkRareItems()
     local bp = LocalPlayer:FindFirstChild("Backpack")
     local char = LocalPlayer.Character
-    if isWorld3 then
-        return (bp and bp:FindFirstChild("God's Chalice")) or (char and char:FindFirstChild("God's Chalice"))
-    elseif isWorld2 then
-        return (bp and bp:FindFirstChild("Fist of Darkness")) or (char and char:FindFirstChild("Fist of Darkness"))
-    end
-    return false
+    
+    local hasChalice = (bp and bp:FindFirstChild("God's Chalice")) or (char and char:FindFirstChild("God's Chalice"))
+    local hasFist = (bp and bp:FindFirstChild("Fist of Darkness")) or (char and char:FindFirstChild("Fist of Darkness"))
+    
+    return hasChalice or hasFist
 end
 
 local function equipRareItem()
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("Humanoid") then return end
     local bp = LocalPlayer:FindFirstChild("Backpack")
+    if not bp then return end
     
-    local itemName = isWorld3 and "God's Chalice" or "Fist of Darkness"
-    local tool = bp and bp:FindFirstChild(itemName)
-    if tool then
-        char.Humanoid:EquipTool(tool)
+    local chalice = bp:FindFirstChild("God's Chalice")
+    if chalice then
+        char.Humanoid:EquipTool(chalice)
+        return
+    end
+    
+    local fist = bp:FindFirstChild("Fist of Darkness")
+    if fist then
+        char.Humanoid:EquipTool(fist)
+        return
     end
 end
 
@@ -288,7 +290,7 @@ local function thucHienHopServer()
 end
 
 -- =========================================================================
--- FARM RƯƠNG (CHẠY CHUNG CHO CẢ SEA 2 VÀ SEA 3)
+-- FARM RƯƠNG
 -- =========================================================================
 local function getNearestChest()
     local char = LocalPlayer.Character
@@ -619,7 +621,7 @@ local function processDarkbeardSummon()
 end
 
 -- =========================================================================
--- LUỒNG GIÁM SÁT RƠI CÚP / FIST / LỖI BOSS (FALLBACK AN TOÀN)
+-- LUỒNG GIÁM SÁT RƠI CÚP / FIST / LỖI BOSS (FALLBACK AN TOÀN CHUNG)
 -- =========================================================================
 task.spawn(function()
     while true do
@@ -633,20 +635,12 @@ task.spawn(function()
                 local boss = nil
                 local enemies = workspace:FindFirstChild("Enemies")
                 
-                if isWorld3 then
-                    if enemies then
-                        for _, enemy in ipairs(enemies:GetChildren()) do
-                            if string.find(enemy.Name, "rip_indra") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
-                                boss = enemy; break
-                            end
-                        end
-                    end
-                elseif isWorld2 then
-                    if enemies then
-                        for _, enemy in ipairs(enemies:GetChildren()) do
-                            if string.find(enemy.Name, "Darkbeard") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
-                                boss = enemy; break
-                            end
+                -- Quét tìm cả 2 loại boss để làm fallback đổi server
+                if enemies then
+                    for _, enemy in ipairs(enemies:GetChildren()) do
+                        if (string.find(enemy.Name, "rip_indra") or string.find(enemy.Name, "Darkbeard")) 
+                           and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+                            boss = enemy; break
                         end
                     end
                 end
@@ -727,7 +721,7 @@ task.spawn(function()
 end)
 
 -- =========================================================================
--- VÒNG LẶP KHỞI CHẠY CHÍNH
+-- VÒNG LẶP KHỞI CHẠY CHÍNH (ĐỊNH TUYẾN DỰA TRÊN VẬT PHẨM TRỰC TIẾP)
 -- =========================================================================
 task.spawn(function()
     task.wait(2)
@@ -739,14 +733,23 @@ task.spawn(function()
     
     while true do
         task.wait(1)
-        if checkRareItems() then
+        
+        local bp = LocalPlayer:FindFirstChild("Backpack")
+        local char = LocalPlayer.Character
+        
+        local chalice = (bp and bp:FindFirstChild("God's Chalice")) or (char and char:FindFirstChild("God's Chalice"))
+        local fist = (bp and bp:FindFirstChild("Fist of Darkness")) or (char and char:FindFirstChild("Fist of Darkness"))
+        
+        if chalice or fist then
             print("🔥 PHÁT HIỆN VẬT PHẨM SỰ KIỆN TRONG BALO! DỪNG FARM RƯƠNG...")
             _G.AutoFarmChest = false
             task.wait(1.5)
             
-            if isWorld3 then
+            if chalice then
+                print("Chén Thánh phát hiện. Khởi động quy trình Rip Indra Sea 3...")
                 processRipIndraSummon()
-            elseif isWorld2 then
+            elseif fist then
+                print("Fist of Darkness phát hiện. Khởi động quy trình Darkbeard Sea 2...")
                 processDarkbeardSummon()
             end
             break
