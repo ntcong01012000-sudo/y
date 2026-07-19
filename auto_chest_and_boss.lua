@@ -10,11 +10,19 @@ local VirtualUser = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer
 
 -- =========================================================================
+-- KHAI BÁO CÁC REMOTE GỐC TỪ AUTO_KILL_RIP_INDRA.LUA ĐỂ GÂY SÁT THƯƠNG CHUẨN XÁC
+-- =========================================================================
+local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+local RegisterAttack = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterAttack")
+local RegisterHit = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RE/RegisterHit")
+local FruitCustomizerRF = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/FruitCustomizerRF")
+
+-- =========================================================================
 -- CẤU HÌNH HỆ THỐNG
 -- =========================================================================
 _G.AutoFarmChest = true
 local ChestTargetLimit = 70
-local FarmSpeed = 300
+local FarmSpeed = 350
 local countChests = 0
 
 -- Cấu hình Sea 3 (Rip Indra)
@@ -72,39 +80,12 @@ end
 pcall(function() saveVisitedServer(game.JobId) end)
 
 -- =========================================================================
--- PHƯƠNG THỨC TRUY XUẤT REMOTE AN TOÀN TRÁNH KẸT LUỒNG (TUẦN TỰ)
--- =========================================================================
-local function getCommF()
-    local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
-    return remotes and remotes:WaitForChild("CommF_", 5)
-end
-
-local function getFruitCustomizerRF()
-    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
-    local net = modules and modules:WaitForChild("Net", 5)
-    return net and net:WaitForChild("RF/FruitCustomizerRF", 5)
-end
-
-local function getRegisterAttack()
-    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
-    local net = modules and modules:WaitForChild("Net", 5)
-    return net and net:WaitForChild("RE/RegisterAttack", 5)
-end
-
-local function getRegisterHit()
-    local modules = ReplicatedStorage:WaitForChild("Modules", 5)
-    local net = modules and modules:WaitForChild("Net", 5)
-    return net and net:WaitForChild("RE/RegisterHit", 5)
-end
-
--- =========================================================================
--- DI CHUYỂN & CHỌN PHE AN TOÀN
+-- HÀM CHỌN PHE & DI CHUYỂN (NGUYÊN BẢN TỪ AUTO_KILL_RIP_INDRA.LUA)
 -- =========================================================================
 local function selectTeam()
     local teamName = "Pirates"
     print("Đang tự động chọn phe: " .. teamName)
     pcall(function()
-        local CommF = getCommF()
         if CommF then CommF:InvokeServer("SetTeam", teamName) end
     end)
     pcall(function()
@@ -132,26 +113,26 @@ local function selectTeam()
     end)
 end
 
--- Hàm bay đến đích mượt mà có noclip và tối ưu khoảng cách gần
-local function bayDen(targetCFrame, speed)
+-- Hàm di chuyển (Tween nếu ở xa, Teleport CFrame nếu ở gần) - Nguyên bản từ auto_kill_rip_indra.lua
+local function DiChuyenDen(targetCFrame, customSpeed)
+    local speed = customSpeed or 300
     local character = LocalPlayer.Character
-    if not character then
-        pcall(function() character = LocalPlayer.CharacterAdded:Wait() end)
-    end
-    if not character then return end
-    
-    local hrp = character:WaitForChild("HumanoidRootPart", 10)
-    if not hrp then return end
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = character.HumanoidRootPart
     
     local distance = (targetCFrame.Position - hrp.Position).Magnitude
-    if distance > 100 then
+    
+    if distance > 150 then
+        -- Bay mượt bằng Tween nếu ở xa để tránh bị kick anti-cheat
         local duration = distance / speed
-        local tween = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
+        local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
+        local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
         
-        local noclipConnection
-        noclipConnection = RunService.Stepped:Connect(function()
-            if LocalPlayer.Character then
-                for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+        -- Bật Noclip khi đang bay để không bị kẹt địa hình
+        local noclip
+        noclip = RunService.Stepped:Connect(function()
+            if character then
+                for _, part in ipairs(character:GetDescendants()) do
                     if part:IsA("BasePart") then
                         part.CanCollide = false
                     end
@@ -162,10 +143,9 @@ local function bayDen(targetCFrame, speed)
         tween:Play()
         tween.Completed:Wait()
         
-        if noclipConnection then
-            noclipConnection:Disconnect()
-        end
+        if noclip then noclip:Disconnect() end
     else
+        -- Khi ở cực gần thì bám sát trực tiếp (Teleport CFrame) để đập boss không bị trượt
         hrp.CFrame = targetCFrame
     end
 end
@@ -334,7 +314,7 @@ local function runFarmChest()
             local targetChest = getNearestChest()
             if targetChest then
                 local chestPos = targetChest:GetPivot().Position
-                bayDen(CFrame.new(chestPos), FarmSpeed)
+                DiChuyenDen(CFrame.new(chestPos), FarmSpeed)
                 
                 pcall(function()
                     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -367,56 +347,44 @@ local function runFarmChest()
 end
 
 -- =========================================================================
--- LOGIC CHIẾN ĐẤU & TRANG BỊ VŨ KHÍ AN TOÀN
+-- LOGIC CHIẾN ĐẤU & TRANG BỊ VŨ KHÍ (NGUYÊN BẢN TỪ AUTO_KILL_RIP_INDRA.LUA)
 -- =========================================================================
-local function equipWeapon()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("Humanoid") then return end
-    for _, tool in ipairs(char:GetChildren()) do
-        if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then return tool end
+
+-- Tự động bật Haki vũ trang (Buso Haki)
+local function KichHoatHaki()
+    local character = LocalPlayer.Character
+    if character and not character:FindFirstChild("HasBuso") then
+        pcall(function()
+            CommF:InvokeServer("Buso")
+        end)
     end
+end
+
+-- Tự động trang bị vũ khí cận chiến/kiếm
+local function TrangBiVuKhi()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("Humanoid") then return end
+    
+    for _, tool in ipairs(character:GetChildren()) do
+        if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
+            return tool
+        end
+    end
+    
     for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
         if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
-            char.Humanoid:EquipTool(tool)
+            character.Humanoid:EquipTool(tool)
             return tool
         end
     end
 end
 
-local function attackBoss(boss, hitFunc, regAttack, regHit)
-    local hrp = boss:FindFirstChild("HumanoidRootPart")
-    local hum = boss:FindFirstChild("Humanoid")
-    if hrp and hum and hum.Health > 0 then
-        local anim = hum:FindFirstChild("Animator")
-        if anim then anim:Destroy() end
-        
-        bayDen(hrp.CFrame * CFrame.new(0, 12, 0), 300)
-        
-        pcall(function()
-            local CommF = getCommF()
-            if CommF then CommF:InvokeServer("Buso") end
-        end)
-        
-        local wp = equipWeapon()
-        if wp then
-            if regAttack then regAttack:FireServer(0) end
-            local targetPart = boss:FindFirstChild("Head") or hrp
-            local targets = {{boss, targetPart}}
-            if hitFunc then
-                pcall(function() hitFunc(targetPart, targets) end)
-            else
-                if regHit then regHit:FireServer(targetPart, targets) end
-            end
-            pcall(function() VirtualUser:Button1Down(Vector2.new(1280, 720)) end)
-        end
-    end
-end
-
-local function getHitFunction()
+-- Lấy hàm hit gốc
+local function LayHamHitGoc()
     if getsenv then
-        for _, s in ipairs(LocalPlayer.PlayerScripts:GetChildren()) do
-            if s:IsA("LocalScript") then
-                local success, env = pcall(getsenv, s)
+        for _, script in ipairs(LocalPlayer.PlayerScripts:GetChildren()) do
+            if script:IsA("LocalScript") then
+                local success, env = pcall(getsenv, script)
                 if success and env and env._G and env._G.SendHitsToServer then
                     return env._G.SendHitsToServer
                 end
@@ -427,13 +395,12 @@ local function getHitFunction()
 end
 
 -- =========================================================================
--- LOGIC SĂN BOSS RIP INDRA (SEA 3)
+-- LOGIC SĂN BOSS RIP INDRA (SEA 3) - NGUYÊN BẢN TỪ AUTO_KILL_RIP_INDRA.LUA
 -- =========================================================================
 local function equipHakiColor(colorName)
-    local rf = getFruitCustomizerRF()
-    if rf then
+    if FruitCustomizerRF then
         local args = { [1] = { ["StorageName"] = colorName, ["Type"] = "AuraSkin", ["Context"] = "Equip" } }
-        pcall(function() rf:InvokeServer(unpack(args)) end)
+        pcall(function() FruitCustomizerRF:InvokeServer(unpack(args)) end)
     end
 end
 
@@ -443,21 +410,19 @@ local function processRipIndraSummon()
         print(string.format("[%d/3] Đổi màu: %s -> Bay đến nút", i, step.Name))
         equipHakiColor(step.Name)
         task.wait(0.2)
-        bayDen(step.Position, 300)
+        DiChuyenDen(step.Position, 300)
         task.wait(1)
     end
     
     print("🎒 Đeo Chén Thánh và bay đến bệ triệu hồi...")
     equipRareItem()
     task.wait(0.5)
-    bayDen(SummonCFrame, 300)
+    DiChuyenDen(SummonCFrame, 300)
     task.wait(2)
     
     _G.AutoKillRipIndra = true
     bossSpawned = false
-    local hitFunc = getHitFunction()
-    local regAttack = getRegisterAttack()
-    local regHit = getRegisterHit()
+    local hitFunction = LayHamHitGoc()
     
     local noclip = RunService.Stepped:Connect(function()
         if _G.AutoKillRipIndra and LocalPlayer.Character then
@@ -496,9 +461,40 @@ local function processRipIndraSummon()
                 if boss then
                     if boss.Parent == ReplicatedStorage then
                         local targetPos = boss:FindFirstChild("HumanoidRootPart") and boss.HumanoidRootPart.CFrame or CFrame.new(-5354.76, 423.85, -2701.32)
-                        bayDen(targetPos, 300)
+                        DiChuyenDen(targetPos, 300)
                     else
-                        attackBoss(boss, hitFunc, regAttack, regHit)
+                        local hrp = boss:FindFirstChild("HumanoidRootPart")
+                        local humanoid = boss:FindFirstChild("Humanoid")
+                        
+                        if hrp and humanoid and humanoid.Health > 0 then
+                            KichHoatHaki()
+                            local weapon = TrangBiVuKhi()
+                            
+                            local animator = humanoid:FindFirstChild("Animator")
+                            if animator then animator:Destroy() end
+                            
+                            local targetPos = hrp.CFrame * CFrame.new(0, 12, 0)
+                            DiChuyenDen(targetPos, 300)
+                            
+                            if weapon then
+                                local targetPart = boss:FindFirstChild("Head") or hrp
+                                local targetsList = {{boss, targetPart}}
+                                
+                                RegisterAttack:FireServer(0)
+                                
+                                if hitFunction then
+                                    pcall(function()
+                                        hitFunction(targetPart, targetsList)
+                                    end)
+                                else
+                                    RegisterHit:FireServer(targetPart, targetsList)
+                                end
+                                
+                                pcall(function()
+                                    VirtualUser:Button1Down(Vector2.new(1280, 720))
+                                end)
+                            end
+                        end
                     end
                 else
                     if bossSpawned then
@@ -515,7 +511,7 @@ local function processRipIndraSummon()
 end
 
 -- =========================================================================
--- LOGIC SĂN BOSS DARKBEARD (SEA 2)
+-- LOGIC SĂN BOSS DARKBEARD (SEA 2) - SỬ DỤNG CHUNG LOGIC ĐÁNH BOSS GỐC
 -- =========================================================================
 local function summonDarkbeard()
     local char = LocalPlayer.Character
@@ -554,16 +550,14 @@ local function processDarkbeardSummon()
         if detection then targetPos = detection.CFrame end
     end)
     
-    bayDen(targetPos, 300)
+    DiChuyenDen(targetPos, 300)
     task.wait(1)
     summonDarkbeard()
     task.wait(2)
     
     _G.AutoKillDarkbeard = true
     bossSpawned = false
-    local hitFunc = getHitFunction()
-    local regAttack = getRegisterAttack()
-    local regHit = getRegisterHit()
+    local hitFunction = LayHamHitGoc()
     
     local noclip = RunService.Stepped:Connect(function()
         if _G.AutoKillDarkbeard and LocalPlayer.Character then
@@ -602,9 +596,40 @@ local function processDarkbeardSummon()
                 if boss then
                     if boss.Parent == ReplicatedStorage then
                         local targetPos = boss:FindFirstChild("HumanoidRootPart") and boss.HumanoidRootPart.CFrame or DarkbeardSummonCFrame
-                        bayDen(targetPos, 300)
+                        DiChuyenDen(targetPos, 300)
                     else
-                        attackBoss(boss, hitFunc, regAttack, regHit)
+                        local hrp = boss:FindFirstChild("HumanoidRootPart")
+                        local humanoid = boss:FindFirstChild("Humanoid")
+                        
+                        if hrp and humanoid and humanoid.Health > 0 then
+                            KichHoatHaki()
+                            local weapon = TrangBiVuKhi()
+                            
+                            local animator = humanoid:FindFirstChild("Animator")
+                            if animator then animator:Destroy() end
+                            
+                            local targetPos = hrp.CFrame * CFrame.new(0, 12, 0)
+                            DiChuyenDen(targetPos, 300)
+                            
+                            if weapon then
+                                local targetPart = boss:FindFirstChild("Head") or hrp
+                                local targetsList = {{boss, targetPart}}
+                                
+                                RegisterAttack:FireServer(0)
+                                
+                                if hitFunction then
+                                    pcall(function()
+                                        hitFunction(targetPart, targetsList)
+                                    end)
+                                else
+                                    RegisterHit:FireServer(targetPart, targetsList)
+                                end
+                                
+                                pcall(function()
+                                    VirtualUser:Button1Down(Vector2.new(1280, 720))
+                                end)
+                            end
+                        end
                     end
                 else
                     if bossSpawned then
@@ -635,7 +660,6 @@ task.spawn(function()
                 local boss = nil
                 local enemies = workspace:FindFirstChild("Enemies")
                 
-                -- Quét tìm cả 2 loại boss để làm fallback đổi server
                 if enemies then
                     for _, enemy in ipairs(enemies:GetChildren()) do
                         if (string.find(enemy.Name, "rip_indra") or string.find(enemy.Name, "Darkbeard")) 
