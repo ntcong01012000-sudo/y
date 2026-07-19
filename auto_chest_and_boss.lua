@@ -14,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 -- =========================================================================
 _G.AutoFarmChest = true
 local ChestTargetLimit = 70
-local FarmSpeed = 300
+local FarmSpeed = 301
 local countChests = 0
 
 -- Kiểm tra thế giới (Sea) hiện tại
@@ -31,8 +31,7 @@ local HakiSteps = {
 _G.AutoKillRipIndra = false
 
 -- Cấu hình Sea 2 (Darkbeard / Râu Đen)
--- Bạn có thể sửa tay tọa độ x, y, z của bệ spawn Râu Đen ở đây nếu muốn
-local DarkbeardSummonCFrame = CFrame.new(3777.6, 14.8, -3498.4) 
+local DarkbeardSummonCFrame = CFrame.new(3777.6, 14.8, -3498.4) -- Vị trí bệ spawn Darkbeard ở Sea 2
 _G.AutoKillDarkbeard = false
 
 -- Biến lưu trữ trạng thái boss đã spawn và server vắng quét sẵn
@@ -77,7 +76,7 @@ end
 pcall(function() saveVisitedServer(game.JobId) end)
 
 -- =========================================================================
--- PHƯƠNG THỨC TRUY XUẤT REMOTE AN TOÀN TRÁNH KẸT LUỒNG
+-- PHƯƠNG THỨC TRUY XUẤT REMOTE AN TOÀN TRÁNH KẸT LUỒNG (TUẦN TỰ)
 -- =========================================================================
 local function getCommF()
     local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
@@ -103,7 +102,7 @@ local function getRegisterHit()
 end
 
 -- =========================================================================
--- DI CHUYỂN & CHỌN PHE
+-- DI CHUYỂN & CHỌN PHE AN TOÀN
 -- =========================================================================
 local function selectTeam()
     local teamName = "Pirates"
@@ -117,10 +116,19 @@ local function selectTeam()
         if pg then
             for _, v in ipairs(pg:GetDescendants()) do
                 if v:IsA("TextButton") and (v.Name == teamName or string.find(v.Text, teamName)) then
+                    local clicked = false
                     if getconnections then
-                        for _, c in pairs(getconnections(v.MouseButton1Click)) do c.Function() end
-                    elseif firesignal then
+                        for _, c in pairs(getconnections(v.MouseButton1Click)) do
+                            c.Function()
+                            clicked = true
+                        end
+                    end
+                    if not clicked and firesignal then
                         firesignal(v.MouseButton1Click)
+                        clicked = true
+                    end
+                    if not clicked then
+                        pcall(function() v:Click() end)
                     end
                 end
             end
@@ -128,27 +136,42 @@ local function selectTeam()
     end)
 end
 
+-- Hàm bay đến đích mượt mà có noclip và tối ưu khoảng cách gần
 local function bayDen(targetCFrame, speed)
-    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local hrp = character:WaitForChild("HumanoidRootPart")
+    local character = LocalPlayer.Character
+    if not character then
+        pcall(function() character = LocalPlayer.CharacterAdded:Wait() end)
+    end
+    if not character then return end
+    
+    local hrp = character:WaitForChild("HumanoidRootPart", 10)
+    if not hrp then return end
+    
     local distance = (targetCFrame.Position - hrp.Position).Magnitude
-    local duration = distance / speed
-    
-    local tween = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
-    
-    local noclipConnection = RunService.Stepped:Connect(function()
-        if character then
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
+    if distance > 100 then
+        local duration = distance / speed
+        local tween = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
+        
+        local noclipConnection
+        noclipConnection = RunService.Stepped:Connect(function()
+            if LocalPlayer.Character then
+                for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
                 end
             end
+        end)
+        
+        tween:Play()
+        tween.Completed:Wait()
+        
+        if noclipConnection then
+            noclipConnection:Disconnect()
         end
-    end)
-    
-    tween:Play()
-    tween.Completed:Wait()
-    if noclipConnection then noclipConnection:Disconnect() end
+    else
+        hrp.CFrame = targetCFrame
+    end
 end
 
 -- =========================================================================
@@ -237,7 +260,7 @@ local function thucHienHopServer()
     print("🔄 Bắt đầu chu kỳ đổi Server liên tục cho đến khi thành công...")
     while true do
         if checkRareItems() then
-            print("🚨 Nhập vật phẩm hiếm lúc đang chuyển server! Dừng đổi server.")
+            print("🚨 Nhận vật phẩm hiếm lúc đang chuyển server! Dừng đổi server.")
             break
         end
         
@@ -335,7 +358,7 @@ local function runFarmChest()
 end
 
 -- =========================================================================
--- LOGIC CHIẾN ĐẤU & TRANG BỊ VŨ KHÍ
+-- LOGIC CHIẾN ĐẤU & TRANG BỊ VŨ KHÍ AN TOÀN
 -- =========================================================================
 local function equipWeapon()
     local char = LocalPlayer.Character
@@ -363,7 +386,10 @@ local function attackBoss(boss, hitFunc, regAttack, regHit)
         bayDen(hrp.CFrame * CFrame.new(0, 12, 0), 300)
         
         -- Kích hoạt Haki vũ trang
-        pcall(function() getCommF():InvokeServer("Buso") end)
+        pcall(function()
+            local CommF = getCommF()
+            if CommF then CommF:InvokeServer("Buso") end
+        end)
         
         local wp = equipWeapon()
         if wp then
@@ -375,7 +401,7 @@ local function attackBoss(boss, hitFunc, regAttack, regHit)
             else
                 if regHit then regHit:FireServer(targetPart, targets) end
             end
-            VirtualUser:Button1Down(Vector2.new(1280, 720))
+            pcall(function() VirtualUser:Button1Down(Vector2.new(1280, 720)) end)
         end
     end
 end
@@ -467,7 +493,6 @@ local function processRipIndraSummon()
                 
                 if boss then
                     if boss.Parent == ReplicatedStorage then
-                        -- Bay đến ép game load
                         local targetPos = boss:FindFirstChild("HumanoidRootPart") and boss.HumanoidRootPart.CFrame or CFrame.new(-5354.76, 423.85, -2701.32)
                         bayDen(targetPos, 300)
                     else
@@ -496,6 +521,7 @@ local function summonDarkbeard()
     if tool then
         if tool.Parent == LocalPlayer.Backpack then
             char.Humanoid:EquipTool(tool)
+            task.wait(0.2)
         end
         local detection = workspace:FindFirstChild("Map") 
             and workspace.Map:FindFirstChild("DarkbeardArena")
@@ -503,10 +529,15 @@ local function summonDarkbeard()
             and workspace.Map.DarkbeardArena.Summoner:FindFirstChild("Detection")
         
         if detection then
-            firetouchinterest(tool.Handle, detection, 0)
-            firetouchinterest(tool.Handle, detection, 1)
-            firetouchinterest(char.HumanoidRootPart, detection, 0)
-            firetouchinterest(char.HumanoidRootPart, detection, 1)
+            if firetouchinterest then
+                pcall(function() firetouchinterest(tool.Handle, detection, 0) end)
+                pcall(function() firetouchinterest(tool.Handle, detection, 1) end)
+                pcall(function() firetouchinterest(char.HumanoidRootPart, detection, 0) end)
+                pcall(function() firetouchinterest(char.HumanoidRootPart, detection, 1) end)
+            else
+                -- Dự phòng: Bay trực tiếp chạm vào CFrame bệ triệu hồi
+                char.HumanoidRootPart.CFrame = detection.CFrame
+            end
         end
     end
 end
@@ -592,7 +623,7 @@ local function processDarkbeardSummon()
 end
 
 -- =========================================================================
--- LUỒNG GIÁM SÁT RƠI CÚP / FIST / LỖI BOSS (FALLBACK)
+-- LUỒNG GIÁM SÁT RƠI CÚP / FIST / LỖI BOSS (FALLBACK AN TOÀN)
 -- =========================================================================
 task.spawn(function()
     while true do
@@ -601,7 +632,7 @@ task.spawn(function()
         if hasRare then hadRareItem = true end
         
         if hadRareItem and not hasRare then
-            task.wait(2) -- Chờ tải balo
+            task.wait(2) -- Chờ balo đồng bộ
             if not checkRareItems() then
                 local boss = nil
                 local enemies = workspace:FindFirstChild("Enemies")
