@@ -404,24 +404,106 @@ local function equipHakiColor(colorName)
     end
 end
 
+local function hasGodChalice()
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    local char = LocalPlayer.Character
+    return (bp and bp:FindFirstChild("God's Chalice")) or (char and char:FindFirstChild("God's Chalice"))
+end
+
+local function hasFistOfDarkness()
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    local char = LocalPlayer.Character
+    return (bp and bp:FindFirstChild("Fist of Darkness")) or (char and char:FindFirstChild("Fist of Darkness"))
+end
+
+local function isRipIndraSpawned()
+    local enemies = workspace:FindFirstChild("Enemies")
+    if enemies then
+        for _, enemy in ipairs(enemies:GetChildren()) do
+            if string.find(enemy.Name, "rip_indra") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+                return true
+            end
+        end
+    end
+    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
+        if string.find(obj.Name, "rip_indra") and obj:FindFirstChild("Humanoid") then
+            return true
+        end
+    end
+    return false
+end
+
+local function isDarkbeardSpawned()
+    local enemies = workspace:FindFirstChild("Enemies")
+    if enemies then
+        for _, enemy in ipairs(enemies:GetChildren()) do
+            if string.find(enemy.Name, "Darkbeard") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+                return true
+            end
+        end
+    end
+    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
+        if string.find(obj.Name, "Darkbeard") and obj:FindFirstChild("Humanoid") then
+            return true
+        end
+    end
+    return false
+end
+
 local function processRipIndraSummon()
-    print("🔥 Đang tiến hành kích hoạt 3 nút Haki pháo đài...")
-    for i, step in ipairs(HakiSteps) do
-        print(string.format("[%d/3] Đổi màu: %s -> Bay đến nút", i, step.Name))
-        equipHakiColor(step.Name)
+    local attempts = 0
+    while hasGodChalice() and not isRipIndraSpawned() do
+        attempts = attempts + 1
+        print(string.format("🔥 [Lần thử %d] Đang tiến hành kích hoạt 3 nút Haki pháo đài...", attempts))
+        for i, step in ipairs(HakiSteps) do
+            if not hasGodChalice() or isRipIndraSpawned() then break end
+            print(string.format("[%d/3] Đổi màu: %s -> Bay đến nút", i, step.Name))
+            equipHakiColor(step.Name)
+            task.wait(0.5)
+            DiChuyenDen(step.Position, 300)
+            task.wait(0.2)
+            -- Di chuyển nhẹ qua lại để chắc chắn chạm nút Haki
+            DiChuyenDen(step.Position * CFrame.new(0, 0, 1), 300)
+            task.wait(0.2)
+            DiChuyenDen(step.Position * CFrame.new(0, 0, -1), 300)
+            task.wait(0.8)
+        end
+        
+        if not hasGodChalice() or isRipIndraSpawned() then break end
+        
+        print("🎒 Đeo Chén Thánh và bay đến bệ triệu hồi...")
+        equipRareItem()
+        task.wait(0.5)
+        DiChuyenDen(SummonCFrame, 300)
         task.wait(0.2)
-        DiChuyenDen(step.Position, 300)
-        task.wait(1)
+        -- Di chuyển nhẹ trên bệ để kích hoạt touch
+        DiChuyenDen(SummonCFrame * CFrame.new(0, 0, 2), 300)
+        task.wait(0.5)
+        DiChuyenDen(SummonCFrame * CFrame.new(0, 0, -2), 300)
+        task.wait(0.5)
+        DiChuyenDen(SummonCFrame, 300)
+        
+        -- Đợi một lát xem boss đã spawn chưa
+        print("⏳ Đang đợi boss Rip Indra spawn...")
+        local spawnWaitTime = 0
+        while spawnWaitTime < 5 do
+            task.wait(0.5)
+            spawnWaitTime = spawnWaitTime + 0.5
+            if isRipIndraSpawned() or not hasGodChalice() then
+                break
+            end
+        end
+        
+        if isRipIndraSpawned() or not hasGodChalice() then
+            print("✅ Boss đã xuất hiện hoặc đã mất Chén Thánh (đã spawn thành công)!")
+            break
+        else
+            print("❌ Chưa spawn được boss! Tiến hành thử lại...")
+        end
     end
     
-    print("🎒 Đeo Chén Thánh và bay đến bệ triệu hồi...")
-    equipRareItem()
-    task.wait(0.5)
-    DiChuyenDen(SummonCFrame, 300)
-    task.wait(2)
-    
     _G.AutoKillRipIndra = true
-    bossSpawned = false
+    bossSpawned = isRipIndraSpawned()
     local hitFunction = LayHamHitGoc()
     
     local noclip = RunService.Stepped:Connect(function()
@@ -540,23 +622,51 @@ local function summonDarkbeard()
 end
 
 local function processDarkbeardSummon()
-    print("🎒 Đeo Fist of Darkness và bay đến bệ triệu hồi Darkbeard...")
-    equipRareItem()
-    task.wait(0.5)
-    
-    local targetPos = DarkbeardSummonCFrame
-    pcall(function()
-        local detection = workspace.Map.DarkbeardArena.Summoner.Detection
-        if detection then targetPos = detection.CFrame end
-    end)
-    
-    DiChuyenDen(targetPos, 300)
-    task.wait(1)
-    summonDarkbeard()
-    task.wait(2)
+    local attempts = 0
+    while hasFistOfDarkness() and not isDarkbeardSpawned() do
+        attempts = attempts + 1
+        print(string.format("🎒 [Lần thử %d] Đeo Fist of Darkness và bay đến bệ triệu hồi Darkbeard...", attempts))
+        equipRareItem()
+        task.wait(0.5)
+        
+        local targetPos = DarkbeardSummonCFrame
+        pcall(function()
+            local detection = workspace.Map.DarkbeardArena.Summoner.Detection
+            if detection then targetPos = detection.CFrame end
+        end)
+        
+        DiChuyenDen(targetPos, 300)
+        task.wait(0.5)
+        summonDarkbeard()
+        task.wait(0.5)
+        -- Di chuyển nhẹ qua lại xung quanh bệ để kích hoạt touch
+        DiChuyenDen(targetPos * CFrame.new(0, 0, 2), 300)
+        task.wait(0.5)
+        DiChuyenDen(targetPos * CFrame.new(0, 0, -2), 300)
+        task.wait(0.5)
+        DiChuyenDen(targetPos, 300)
+        
+        -- Chờ một lúc xem boss đã spawn chưa
+        print("⏳ Đang đợi boss Darkbeard spawn...")
+        local spawnWaitTime = 0
+        while spawnWaitTime < 5 do
+            task.wait(0.5)
+            spawnWaitTime = spawnWaitTime + 0.5
+            if isDarkbeardSpawned() or not hasFistOfDarkness() then
+                break
+            end
+        end
+        
+        if isDarkbeardSpawned() or not hasFistOfDarkness() then
+            print("✅ Boss Darkbeard đã xuất hiện hoặc đã mất Fist of Darkness (đã spawn thành công)!")
+            break
+        else
+            print("❌ Chưa spawn được boss Darkbeard! Tiến hành thử lại...")
+        end
+    end
     
     _G.AutoKillDarkbeard = true
-    bossSpawned = false
+    bossSpawned = isDarkbeardSpawned()
     local hitFunction = LayHamHitGoc()
     
     local noclip = RunService.Stepped:Connect(function()
