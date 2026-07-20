@@ -1,5 +1,5 @@
 -- [[ Antigravity Hub - Blox Fruits Ultimate Integration Script ]]
--- Tích hợp: Fast Attack CPS, Auto Farm, Boss Spawn, Auto Chest, Fruit Sniper, ESP, Haki, Anti-AFK & Lag Fix.
+-- Tích hợp: Kaitun Farm, Fast Attack CPS, Auto Farm, Boss Spawn, Auto Chest, Fruit Sniper, ESP, Haki, Anti-AFK & Lag Fix.
 -- Thiết kế UI kính mờ (Glassmorphic UI) có tab & icon mở khóa. Lưu cấu hình theo tên người dùng.
 
 repeat task.wait() until game:IsLoaded()
@@ -107,6 +107,7 @@ local render3DEnabled = true
 local _G_ActiveTarget = nil
 local _G_StatusText = "Đang chờ lệnh..."
 local countChests = 0
+local sessionStartTime = os.time()
 
 -- Dữ liệu tọa độ
 local SummonCFrame = CFrame.new(-5564.36, 314.57, -2661.53) -- Bệ spawn Rip Indra (Sea 3)
@@ -122,16 +123,175 @@ local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 local FruitCustomizerRF = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Net"):WaitForChild("RF/FruitCustomizerRF")
 
 -- =========================================================================
--- TÍNH NĂNG CHỐNG AFK & TRANG BỊ
+-- CHỨC NĂNG LẺ 1: KHỬ ANTI-CHEAT 3TN (ANTI-3TN DISABLER)
 -- =========================================================================
-pcall(function()
-    LocalPlayer.Idled:Connect(function()
-        VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-        task.wait(1)
-        VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+local function runAnti3TN()
+    local function kill3TN(o)
+        if o and o.Name == "3TN" then o:Destroy() end
+    end
+    pcall(function() kill3TN(CoreGui:FindFirstChild("3TN")) end)
+    RunService.RenderStepped:Connect(function() kill3TN(CoreGui:FindFirstChild("3TN")) end)
+    CoreGui.ChildAdded:Connect(kill3TN)
+    CoreGui.DescendantAdded:Connect(kill3TN)
+    task.spawn(function()
+        while scriptRunning and currentRunID == _G.AntigravityRunID do
+            task.wait(0.1)
+            kill3TN(CoreGui:FindFirstChild("3TN"))
+        end
     end)
+    print("🛡️ [Anti-3TN] Đã kích hoạt cơ chế bảo vệ chạy ngầm.")
+end
+runAnti3TN()
+
+-- =========================================================================
+-- CHỨC NĂNG LẺ 2: TỐI ƯU HÓA ĐỒ HỌA NÂNG CAO (ADVANCED LAG FIX & FPS BOOST)
+-- =========================================================================
+local function optimizeGraphics()
+    pcall(function()
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        Lighting.Brightness = 1
+        Lighting.ClockTime = 12
+        
+        local Terrain = workspace:FindFirstChildOfClass("Terrain")
+        if Terrain then
+            Terrain.WaterWaveSize = 0
+            Terrain.WaterWaveSpeed = 0
+            Terrain.WaterReflectance = 0
+            Terrain.WaterTransparency = 0
+        end
+        
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Fire") or obj:IsA("Smoke") then
+                obj.Enabled = false
+            end
+            if obj:IsA("BasePart") then
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+                obj.CastShadow = false
+            end
+            if obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Transparency = 1
+            end
+        end
+        
+        for _, effect in pairs(Lighting:GetChildren()) do
+            if effect:IsA("PostEffect") or (effect:IsA("BlurEffect") and effect.Name ~= "NexusBlur") then
+                effect.Enabled = false
+            end
+        end
+        
+        -- Xóa Island LOD
+        local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
+        if playerScripts then
+            if playerScripts:FindFirstChild("NewIslandLOD") then playerScripts.NewIslandLOD:Destroy() end
+            if playerScripts:FindFirstChild("IslandLOD") then playerScripts.IslandLOD:Destroy() end
+        end
+        
+        -- Dọn hiệu ứng game thừa từ Container
+        local container = ReplicatedStorage:FindFirstChild("Container", true)
+        if container then
+            for _, name in ipairs({"AirDash", "LightningTP", "Damage", "Confetti", "LevelUp"}) do
+                local target = container:FindFirstChild(name, true)
+                if target then target:Destroy() end
+            end
+        end
+        
+        if setfps then pcall(setfps, 120) end
+        print("⚡ [Lag Fix] Tối ưu hóa bộ nhớ và đồ họa nâng cao thành công!")
+    end)
+end
+
+-- Bộ dọn RAM định kỳ
+task.spawn(function()
+    while scriptRunning and currentRunID == _G.AntigravityRunID do
+        task.wait(5)
+        if Config.LowGraphics then
+            pcall(function()
+                gcinfo()
+                collectgarbage("collect")
+            end)
+        end
+    end
 end)
 
+-- Khởi động lag fix nếu cấu hình bật
+if Config.LowGraphics then
+    task.spawn(optimizeGraphics)
+end
+
+-- =========================================================================
+-- CHỨC NĂNG LẺ 3: GỌI MODULE FARM CỦA KAITUN (KAITUN LOADER)
+-- =========================================================================
+local function loadKaitunModule()
+    _G_StatusText = "Đang tải Kaitun..."
+    task.spawn(function()
+        local success, err = pcall(function()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/sucvatthieunang/djtme/refs/heads/main/module"))()
+        end)
+        if success then
+            _G_StatusText = "Kaitun Module hoạt động!"
+            print("🚀 [Kaitun] Đã nạp thành công module từ sucvatthieunang!")
+        else
+            _G_StatusText = "Lỗi tải Kaitun"
+            warn("❌ [Kaitun] Lỗi nạp module: " .. tostring(err))
+        end
+    end)
+end
+
+-- =========================================================================
+-- CHỨC NĂNG LẺ 4: THEO DÕI THÔNG TIN VÀ KIỂM TRA ĐỒ ĐẠC (STATS TRACKER)
+-- =========================================================================
+local function getPlayerData()
+    local level, beli, bounty, frag = 0, 0, 0, 0
+    local race = "Unknown"
+    
+    local data = LocalPlayer:FindFirstChild("Data")
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    
+    if data then
+        local lv = data:FindFirstChild("Level")
+        if lv then level = lv.Value end
+        local b = data:FindFirstChild("Beli")
+        if b then beli = b.Value end
+        local f = data:FindFirstChild("Fragments")
+        if f then frag = f.Value end
+        local r = data:FindFirstChild("Race")
+        if r then race = r.Value end
+    end
+    if leaderstats then
+        local bo = leaderstats:FindFirstChild("Bounty/Honor")
+        if bo then bounty = bo.Value end
+    end
+    
+    return level, beli, bounty, frag, race
+end
+
+local function getFarmProgress()
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local character = LocalPlayer.Character
+    
+    local function hasItem(itemName)
+        local inBackpack = backpack and backpack:FindFirstChild(itemName) ~= nil
+        local inCharacter = character and character:FindFirstChild(itemName) ~= nil
+        return inBackpack or inCharacter
+    end
+    
+    local hasGodHuman = hasItem("Godhuman")
+    local hasSoulGuitar = hasItem("Soul Guitar") or hasItem("Skull Guitar")
+    local hasCDK = hasItem("Cursed Dual Katana")
+    
+    local pullLever = false
+    pcall(function()
+        pullLever = CommF:InvokeServer("CheckTempleDoor") == true
+    end)
+    
+    return hasGodHuman, hasSoulGuitar, hasCDK, pullLever
+end
+
+-- =========================================================================
+-- TÍNH NĂNG CHỐNG AFK & TRANG BỊ VŨ KHÍ
+-- =========================================================================
 local function getMyPosition()
     local char = LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -181,32 +341,13 @@ local function equipWeapon(toolTip)
 end
 
 -- =========================================================================
--- HAKI VÀ CHỌN PHE
+-- HAKI VÀ CHỌN PHE MẠC ĐỊNH
 -- =========================================================================
 local function activateBuso()
     local character = LocalPlayer.Character
     if character and not character:FindFirstChild("HasBuso") then
         pcall(function() CommF:InvokeServer("Buso") end)
     end
-end
-
-local function isKenActive()
-    local char = LocalPlayer.Character
-    if char then
-        for _, child in ipairs(char:GetChildren()) do
-            local nameLower = child.Name:lower()
-            if string.find(nameLower, "ken") or string.find(nameLower, "observation") or string.find(nameLower, "instinct") then
-                return true
-            end
-        end
-    end
-    for attr, val in pairs(LocalPlayer:GetAttributes()) do
-        local attrLower = attr:lower()
-        if (string.find(attrLower, "ken") or string.find(attrLower, "observation") or string.find(attrLower, "instinct")) and type(val) == "boolean" then
-            if val == true then return true end
-        end
-    end
-    return false
 end
 
 local function activateKen()
@@ -219,13 +360,6 @@ local function activateKen()
             end
         end
     end)
-end
-
-local function equipHakiColor(colorName)
-    if FruitCustomizerRF then
-        local args = { [1] = { ["StorageName"] = colorName, ["Type"] = "AuraSkin", ["Context"] = "Equip" } }
-        pcall(function() FruitCustomizerRF:InvokeServer(unpack(args)) end)
-    end
 end
 
 local function selectTeam()
@@ -344,59 +478,12 @@ local function thucHienHopServer()
     end
 end
 
--- =========================================================================
--- LOGIC TỐI ƯU HÓA GAME (LAG FIX & LOW GRAPHICS & CLEAN RAM)
--- =========================================================================
-local function optimizeGraphics()
-    pcall(function()
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 9e9
-        Lighting.Brightness = 1
-        Lighting.ClockTime = 12
-        for _, effect in pairs(Lighting:GetChildren()) do
-            if effect:IsA("PostEffect") or effect:IsA("BlurEffect") or effect:IsA("BloomEffect") or effect:IsA("ColorCorrectionEffect") then
-                effect.Enabled = false
-            end
-        end
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Fire") or obj:IsA("Smoke") then
-                obj.Enabled = false
-            end
-            if obj:IsA("Decal") or obj:IsA("Texture") then
-                obj.Transparency = 1
-            end
-        end
-    end)
-end
-
-task.spawn(function()
-    while scriptRunning and currentRunID == _G.AntigravityRunID do
-        task.wait(5)
-        if Config.LowGraphics then
-            pcall(function()
-                gcinfo()
-                collectgarbage("collect")
-            end)
-        end
-    end
-end)
-
+-- Tắt màn hình 3D (Treo máy)
 local function toggle3DRender(state)
     render3DEnabled = state
     pcall(function()
         RunService:Set3dRenderingEnabled(render3DEnabled)
     end)
-end
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.P then
-        toggle3DRender(not render3DEnabled)
-    end
-end)
-
--- Khởi động cài đặt đồ họa nếu đã bật
-if Config.LowGraphics then
-    task.spawn(optimizeGraphics)
 end
 
 -- =========================================================================
@@ -484,12 +571,6 @@ end
 -- =========================================================================
 -- QUÉT THỰC THỂ & ĐỐI TƯỢNG
 -- =========================================================================
-local function isAlive(entity)
-    if not entity then return false end
-    local humanoid = entity:FindFirstChildOfClass("Humanoid")
-    return humanoid and humanoid.Health > 0
-end
-
 local function isPlayerOrClone(model)
     if not model or not model:IsA("Model") then return true end
     if Players:GetPlayerFromCharacter(model) then return true end
@@ -607,41 +688,6 @@ end
 -- =========================================================================
 -- EVENT BOSS DETECTION
 -- =========================================================================
-local function hasGodChalice()
-    local bp = LocalPlayer:FindFirstChild("Backpack")
-    local char = LocalPlayer.Character
-    return (bp and bp:FindFirstChild("God's Chalice")) or (char and char:FindFirstChild("God's Chalice"))
-end
-
-local function hasFistOfDarkness()
-    local bp = LocalPlayer:FindFirstChild("Backpack")
-    local char = LocalPlayer.Character
-    return (bp and bp:FindFirstChild("Fist of Darkness")) or (char and char:FindFirstChild("Fist of Darkness"))
-end
-
-local function checkRareItems()
-    return hasGodChalice() or hasFistOfDarkness()
-end
-
-local function equipRareItem()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("Humanoid") then return end
-    local bp = LocalPlayer:FindFirstChild("Backpack")
-    if not bp then return end
-    
-    local chalice = bp:FindFirstChild("God's Chalice")
-    if chalice then
-        char.Humanoid:EquipTool(chalice)
-        return
-    end
-    
-    local fist = bp:FindFirstChild("Fist of Darkness")
-    if fist then
-        char.Humanoid:EquipTool(fist)
-        return
-    end
-end
-
 local function isRipIndraSpawned()
     local enemies = workspace:FindFirstChild("Enemies")
     if enemies then
@@ -701,195 +747,6 @@ local function summonDarkbeard()
         end
     end
 end
-
--- =========================================================================
--- FARM RƯƠNG
--- =========================================================================
-local function getNearestChest()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
-    local myPos = char.HumanoidRootPart.Position
-    local chests = CollectionService:GetTagged("_ChestTagged")
-    local nearest = nil
-    local shortest = math.huge
-    
-    for _, chest in ipairs(chests) do
-        if (chest:IsA("BasePart") or chest:IsA("Model")) and not chest:GetAttribute("IsDisabled") then
-            local chestPos = chest:GetPivot().Position
-            local dist = (chestPos - myPos).Magnitude
-            if dist < shortest then
-                shortest = dist
-                nearest = chest
-            end
-        end
-    end
-    return nearest
-end
-
--- =========================================================================
--- FRUIT SNIPER & ESP
--- =========================================================================
-local function FruitFind()
-    local fruits = workspace:GetChildren()
-    local FruitDistance = math.huge
-    local FoundFruit = nil
-
-    for _, fruit in pairs(fruits) do
-        local plrPP = LocalPlayer and LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
-        local isTool = fruit and fruit:IsA("Tool") and fruit:FindFirstChild("Handle")
-        local isFruitNamed = fruit and string.find(fruit.Name, "Fruit") and fruit:FindFirstChild("Handle")
-
-        if plrPP and isTool and (plrPP.Position - isTool.Position).Magnitude <= FruitDistance then
-            FruitDistance = (plrPP.Position - isTool.Position).Magnitude
-            FoundFruit = fruit
-        elseif plrPP and isFruitNamed and (plrPP.Position - isFruitNamed.Position).Magnitude <= FruitDistance then
-            FruitDistance = (plrPP.Position - isFruitNamed.Position).Magnitude
-            FoundFruit = fruit
-        end
-    end
-
-    return FoundFruit
-end
-
-local function FindFruitInInventory()
-    local plrChar = LocalPlayer and LocalPlayer.Character
-    local plrBag  = LocalPlayer and LocalPlayer.Backpack
-
-    if plrChar then
-        for _, tool in pairs(plrChar:GetChildren()) do
-            if tool:IsA("Tool") and tool:FindFirstChild("Fruit") then return tool end
-        end
-    end
-    if plrBag then
-        for _, tool in pairs(plrBag:GetChildren()) do
-            if tool:IsA("Tool") and tool:FindFirstChild("Fruit") then return tool end
-        end
-    end
-    return nil
-end
-
-local function Get_Fruit_Store_ID(Fruit)
-    local mapping = {
-        ["Rocket Fruit"] = "Rocket-Rocket", ["Spin Fruit"] = "Spin-Spin", ["Chop Fruit"] = "Chop-Chop",
-        ["Spring Fruit"] = "Spring-Spring", ["Bomb Fruit"] = "Bomb-Bomb", ["Smoke Fruit"] = "Smoke-Smoke",
-        ["Spike Fruit"] = "Spike-Spike", ["Flame Fruit"] = "Flame-Flame", ["Falcon Fruit"] = "Falcon-Falcon",
-        ["Ice Fruit"] = "Ice-Ice", ["Sand Fruit"] = "Sand-Sand", ["Dark Fruit"] = "Dark-Dark",
-        ["Ghost Fruit"] = "Ghost-Ghost", ["Diamond Fruit"] = "Diamond-Diamond", ["Light Fruit"] = "Light-Light",
-        ["Rubber Fruit"] = "Rubber-Rubber", ["Barrier Fruit"] = "Barrier-Barrier", ["Magma Fruit"] = "Magma-Magma",
-        ["Quake Fruit"] = "Quake-Quake", ["Buddha Fruit"] = "Buddha-Buddha", ["Love Fruit"] = "Love-Love",
-        ["Spider Fruit"] = "Spider-Spider", ["Sound Fruit"] = "Sound-Sound", ["Phoenix Fruit"] = "Phoenix-Phoenix",
-        ["Portal Fruit"] = "Portal-Portal", ["Rumble Fruit"] = "Rumble-Rumble", ["Pain Fruit"] = "Pain-Pain",
-        ["Blizzard Fruit"] = "Blizzard-Blizzard", ["Gravity Fruit"] = "Gravity-Gravity", ["Mammoth Fruit"] = "Mammoth-Mammoth",
-        ["T-Rex Fruit"] = "T-Rex-T-Rex", ["Dough Fruit"] = "Dough-Dough", ["Shadow Fruit"] = "Shadow-Shadow",
-        ["Venom Fruit"] = "Venom-Venom", ["Control Fruit"] = "Control-Control", ["Spirit Fruit"] = "Spirit-Spirit",
-        ["Dragon Fruit"] = "Dragon-Dragon", ["Leopard Fruit"] = "Leopard-Leopard", ["Kitsune Fruit"] = "Kitsune-Kitsune"
-    }
-    return mapping[Fruit]
-end
-
-local function SendDiscordWebhook(fruitName)
-    local webhookUrl = Config.DiscordWebhook
-    if not webhookUrl or webhookUrl == "" then return end
-    
-    local payload = {
-        ["embeds"] = {{
-            ["title"] = "🍎 Fruit Sniper - Stored!",
-            ["description"] = "**" .. username .. "** đã cất giữ thành công **" .. fruitName .. "**!",
-            ["color"] = 0x00ff88,
-            ["footer"] = { ["text"] = "Antigravity Hub • " .. os.date("%H:%M:%S") }
-        }}
-    }
-    pcall(function()
-        game:HttpGet(webhookUrl, true, "POST", { ["Content-Type"] = "application/json" }, HttpService:JSONEncode(payload))
-    end)
-end
-
-local function StoreFruitWithRetry(fruitTool)
-    local maxRetries = Config.StoreRetries or 3
-    local fruitId = fruitTool:GetAttribute("OriginalName") or Get_Fruit_Store_ID(fruitTool.Name)
-
-    if not fruitId then
-        print("❌ [FruitSniper] Không nhận diện được trái: " .. fruitTool.Name)
-        return false
-    end
-
-    for attempt = 1, maxRetries do
-        pcall(function()
-            if fruitTool.Parent == LocalPlayer.Character then
-                local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-                if humanoid then humanoid:UnequipTools() end
-            end
-        end)
-        task.wait(0.2)
-
-        local success, result = pcall(function()
-            return CommF:InvokeServer("StoreFruit", fruitId, fruitTool)
-        end)
-
-        if success and result == true then
-            print("✅ [FruitSniper] Cất thành công trái: " .. fruitTool.Name)
-            SendDiscordWebhook(fruitTool.Name)
-            return true
-        end
-        task.wait(0.5)
-    end
-    return false
-end
-
--- Vẽ ESP cho trái ác quỷ
-local function AddFruitESP(Part)
-    if Part and Part:FindFirstChild("ESP_FruitSniper") then return end
-    
-    local Folder = Instance.new("Folder", Part)
-    Folder.Name = "ESP_FruitSniper"
-
-    local BBG = Instance.new("BillboardGui", Folder)
-    BBG.Adornee = Part
-    BBG.Size = UDim2.new(0, 120, 0, 50)
-    BBG.StudsOffset = Vector3.new(0, 3, 0)
-    BBG.AlwaysOnTop = true
-
-    local TL = Instance.new("TextLabel", BBG)
-    TL.BackgroundTransparency = 1
-    TL.Size = UDim2.new(1, 0, 1, 0)
-    TL.TextSize = 13
-    TL.Font = Enum.Font.GothamBold
-    TL.TextColor3 = Color3.fromRGB(255, 50, 100)
-    TL.TextStrokeTransparency = 0
-    TL.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    TL.Text = "..."
-
-    task.spawn(function()
-        while Part and Part.Parent and scriptRunning do
-            pcall(function()
-                local myPos = getMyPosition()
-                if myPos then
-                    local dist = math.floor((Part.Position - myPos).Magnitude)
-                    TL.Text = "🍎 " .. Part.Parent.Name .. " [" .. dist .. "m]"
-                end
-            end)
-            task.wait(0.5)
-        end
-        Folder:Destroy()
-    end)
-end
-
-task.spawn(function()
-    while scriptRunning and currentRunID == _G.AntigravityRunID do
-        task.wait(1)
-        if Config.FruitESP then
-            for _, obj in pairs(workspace:GetChildren()) do
-                pcall(function()
-                    if obj and obj:IsA("Tool") and obj:FindFirstChild("Handle") then
-                        AddFruitESP(obj.Handle)
-                    elseif obj and string.find(obj.Name, "Fruit") and obj:FindFirstChild("Handle") then
-                        AddFruitESP(obj.Handle)
-                    end
-                end)
-            end
-        end
-    end
-end)
 
 -- =========================================================================
 -- BỘ ĐIỀU PHỐI TRẠNG THÁI (PRIORITY STATE COORDINATOR)
@@ -1375,8 +1232,8 @@ local MainStroke = Instance.new("UIStroke")
 local MainGradient = Instance.new("UIGradient")
 
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 500, 0, 360)
-MainFrame.Position = UDim2.new(0.5, -250, 0.5, -180)
+MainFrame.Size = UDim2.new(0, 520, 0, 360)
+MainFrame.Position = UDim2.new(0.5, -260, 0.5, -180)
 MainFrame.BackgroundColor3 = Color3.fromRGB(13, 13, 17)
 MainFrame.BackgroundTransparency = 0.12
 MainFrame.Visible = true
@@ -1412,9 +1269,9 @@ local TitleText = Instance.new("TextLabel")
 TitleText.Size = UDim2.new(0.7, 0, 1, 0)
 TitleText.Position = UDim2.new(0.04, 0, 0, 0)
 TitleText.BackgroundTransparency = 1
-TitleText.Text = "ANTIGRAVITY PRO"
+TitleText.Text = "ANTIGRAVITY KAITUN PRO"
 TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleText.TextSize = 14
+TitleText.TextSize = 13
 TitleText.Font = Enum.Font.GothamBold
 TitleText.TextXAlignment = Enum.TextXAlignment.Left
 TitleText.Parent = Header
@@ -1447,7 +1304,7 @@ CloseBtn.Parent = Header
 local Sidebar = Instance.new("Frame")
 local SB_Corner = Instance.new("UICorner")
 Sidebar.Name = "Sidebar"
-Sidebar.Size = UDim2.new(0, 120, 1, -40)
+Sidebar.Size = UDim2.new(0, 130, 1, -40)
 Sidebar.Position = UDim2.new(0, 0, 0, 40)
 Sidebar.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 Sidebar.Parent = MainFrame
@@ -1467,15 +1324,15 @@ sbPadding.Parent = Sidebar
 -- Divider phân cách
 local Divider = Instance.new("Frame")
 Divider.Size = UDim2.new(0, 1, 1, -40)
-Divider.Position = UDim2.new(0, 120, 0, 40)
+Divider.Position = UDim2.new(0, 130, 0, 40)
 Divider.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
 Divider.BorderSizePixel = 0
 Divider.Parent = MainFrame
 
 -- Content Container (Phải)
 local ContentContainer = Instance.new("Frame")
-ContentContainer.Size = UDim2.new(1, -120, 1, -40)
-ContentContainer.Position = UDim2.new(0, 120, 0, 40)
+ContentContainer.Size = UDim2.new(1, -130, 1, -40)
+ContentContainer.Position = UDim2.new(0, 130, 0, 40)
 ContentContainer.BackgroundTransparency = 1
 ContentContainer.Parent = MainFrame
 
@@ -1886,7 +1743,7 @@ local function createTab(name)
     tabScroll.Size = UDim2.new(1, -12, 1, -12)
     tabScroll.Position = UDim2.new(0, 6, 0, 6)
     tabScroll.BackgroundTransparency = 1
-    tabScroll.CanvasSize = UDim2.new(0, 0, 0, 480)
+    tabScroll.CanvasSize = UDim2.new(0, 0, 0, 520)
     tabScroll.ScrollBarThickness = 3
     tabScroll.ScrollBarImageColor3 = Color3.fromRGB(0, 220, 255)
     tabScroll.Visible = false
@@ -1955,19 +1812,184 @@ local function createTab(name)
     return tabScroll, select
 end
 
--- Khởi tạo các Tab
-local TabCombat, selectCombat = createTab("Farm & Tấn công")
+-- Khởi tạo các Tab (Bổ sung Tab Bảng Thống Kê / Dashboard lên đầu)
+local TabDashboard, selectDashboard = createTab("Bảng Thống kê")
+local TabCombat, _ = createTab("Farm & Tấn công")
 local TabBoss, _ = createTab("Boss & Rương")
 local TabFruit, _ = createTab("Săn Trái cây")
 local TabSystem, _ = createTab("Hệ thống")
 
-selectCombat() -- Mở tab Combat mặc định
+selectDashboard() -- Mở tab Bảng Thống Kê mặc định
 
 -- =========================================================================
 -- KHỞI TẠO NỘI DUNG TỪNG TAB
 -- =========================================================================
 
--- 1. TAB COMBAT (FARM & TẤN CÔNG)
+-- 1. TAB BẢNG THỐNG KÊ (DASHBOARD)
+local StatsGrid = Instance.new("Frame")
+StatsGrid.Size = UDim2.new(0.94, 0, 0, 130)
+StatsGrid.BackgroundTransparency = 1
+StatsGrid.Parent = TabDashboard
+
+local function createStatCard(parent, labelText, iconText, startVal, color, pos)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(0.48, -4, 0, 60)
+    card.Position = pos
+    card.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    card.Parent = parent
+    
+    local cardCorner = Instance.new("UICorner")
+    cardCorner.CornerRadius = UDim.new(0, 8)
+    cardCorner.Parent = card
+    
+    local cardStroke = Instance.new("UIStroke")
+    cardStroke.Color = Color3.fromRGB(45, 45, 50)
+    cardStroke.Thickness = 1
+    cardStroke.Parent = card
+    
+    local icon = Instance.new("TextLabel")
+    icon.Size = UDim2.new(0, 20, 0, 20)
+    icon.Position = UDim2.new(0, 10, 0, 5)
+    icon.BackgroundTransparency = 1
+    icon.Text = iconText
+    icon.TextColor3 = color
+    icon.TextSize = 11
+    icon.Font = Enum.Font.GothamBold
+    icon.TextXAlignment = Enum.TextXAlignment.Left
+    icon.Parent = card
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.7, 0, 0, 20)
+    label.Position = UDim2.new(0, 30, 0, 5)
+    label.BackgroundTransparency = 1
+    label.Text = labelText
+    label.TextColor3 = Color3.fromRGB(160, 160, 170)
+    label.TextSize = 10
+    label.Font = Enum.Font.GothamSemibold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = card
+    
+    local val = Instance.new("TextLabel")
+    val.Size = UDim2.new(1, -20, 0, 30)
+    val.Position = UDim2.new(0, 10, 0, 25)
+    val.BackgroundTransparency = 1
+    val.Text = tostring(startVal)
+    val.TextColor3 = Color3.fromRGB(255, 255, 255)
+    val.TextSize = 15
+    val.Font = Enum.Font.GothamBold
+    val.TextXAlignment = Enum.TextXAlignment.Left
+    val.Parent = card
+    
+    return val
+end
+
+local levelVal = createStatCard(StatsGrid, "Cấp độ (Level)", "Lv", "0", Color3.fromRGB(170, 130, 255), UDim2.new(0, 0, 0, 0))
+local beliVal = createStatCard(StatsGrid, "Tiền (Beli)", "₿", "0", Color3.fromRGB(230, 180, 50), UDim2.new(0.5, 4, 0, 0))
+local bountyVal = createStatCard(StatsGrid, "Bounty / Honor", "✪", "0", Color3.fromRGB(240, 80, 80), UDim2.new(0, 0, 0, 65))
+local fragVal = createStatCard(StatsGrid, "F các mảnh (Frag)", "◆", "0", Color3.fromRGB(80, 220, 120), UDim2.new(0.5, 4, 0, 65))
+
+-- Checklist Panel
+local ChecklistFrame = Instance.new("Frame")
+ChecklistFrame.Size = UDim2.new(0.94, 0, 0, 110)
+ChecklistFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+ChecklistFrame.Parent = TabDashboard
+local ckCorner = Instance.new("UICorner")
+ckCorner.CornerRadius = UDim.new(0, 8)
+ckCorner.Parent = ChecklistFrame
+local ckStroke = Instance.new("UIStroke")
+ckStroke.Color = Color3.fromRGB(45, 45, 50)
+ckStroke.Thickness = 1
+ckStroke.Parent = ChecklistFrame
+
+local ckTitle = Instance.new("TextLabel")
+ckTitle.Size = UDim2.new(1, -16, 0, 20)
+ckTitle.Position = UDim2.new(0, 8, 0, 4)
+ckTitle.BackgroundTransparency = 1
+ckTitle.Text = "Kiểm tra tiến độ tài khoản (Checklist)"
+ckTitle.TextColor3 = Color3.fromRGB(150, 150, 160)
+ckTitle.TextSize = 10
+ckTitle.Font = Enum.Font.GothamBold
+ckTitle.TextXAlignment = Enum.TextXAlignment.Left
+ckTitle.Parent = ChecklistFrame
+
+local progressLabel = Instance.new("TextLabel")
+progressLabel.Size = UDim2.new(1, -16, 0, 80)
+progressLabel.Position = UDim2.new(0, 8, 0, 24)
+progressLabel.BackgroundTransparency = 1
+progressLabel.Text = "Godhuman: ❌\nSoul Guitar: ❌\nCursed Dual Katana: ❌\nTemple Lever: ❌"
+progressLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+progressLabel.TextSize = 11
+progressLabel.Font = Enum.Font.Gotham
+progressLabel.LineHeight = 1.3
+progressLabel.TextXAlignment = Enum.TextXAlignment.Left
+progressLabel.Parent = ChecklistFrame
+
+-- Race + Session timer Frame
+local InfoGrid = Instance.new("Frame")
+InfoGrid.Size = UDim2.new(0.94, 0, 0, 50)
+InfoGrid.BackgroundTransparency = 1
+InfoGrid.Parent = TabDashboard
+
+local raceLabel = Instance.new("TextLabel")
+raceLabel.Size = UDim2.new(0.5, -4, 1, 0)
+raceLabel.BackgroundTransparency = 1
+raceLabel.Text = "Chủng tộc: Đang đọc..."
+raceLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+raceLabel.TextSize = 11
+raceLabel.Font = Enum.Font.GothamSemibold
+raceLabel.TextXAlignment = Enum.TextXAlignment.Left
+raceLabel.Parent = InfoGrid
+
+local sessionLabel = Instance.new("TextLabel")
+sessionLabel.Size = UDim2.new(0.5, -4, 1, 0)
+sessionLabel.Position = UDim2.new(0.5, 4, 0, 0)
+sessionLabel.BackgroundTransparency = 1
+sessionLabel.Text = "Thời gian chạy: 00:00:00"
+sessionLabel.TextColor3 = Color3.fromRGB(170, 130, 255)
+sessionLabel.TextSize = 11
+sessionLabel.Font = Enum.Font.Code
+sessionLabel.TextXAlignment = Enum.TextXAlignment.Right
+sessionLabel.Parent = InfoGrid
+
+-- Run Kaitun button
+createButton(TabDashboard, "Khởi động Kaitun Farm Module", function()
+    loadKaitunModule()
+end)
+
+-- Luồng cập nhật Dashboard liên tục
+local function updateDashboard()
+    local lv, bel, bty, frg, rc = getPlayerData()
+    levelVal.Text = tostring(lv)
+    beliVal.Text = tostring(bel)
+    bountyVal.Text = tostring(bty)
+    fragVal.Text = tostring(frg)
+    raceLabel.Text = "Chủng tộc: " .. tostring(rc)
+    
+    local elapsed = os.time() - sessionStartTime
+    local h = math.floor(elapsed / 3600)
+    local m = math.floor((elapsed % 3600) / 60)
+    local s = elapsed % 60
+    sessionLabel.Text = string.format("Thời gian chạy: %02d:%02d:%02d", h, m, s)
+    
+    local god, guitar, cdk, lever = getFarmProgress()
+    progressLabel.Text = string.format(
+        "Godhuman: %s\nSoul Guitar: %s\nCursed Dual Katana: %s\nTemple Lever: %s",
+        god and "✅" or "❌",
+        guitar and "✅" or "❌",
+        cdk and "✅" or "❌",
+        lever and "✅" or "❌"
+    )
+end
+
+task.spawn(function()
+    while scriptRunning and currentRunID == _G.AntigravityRunID do
+        pcall(updateDashboard)
+        task.wait(1.5)
+    end
+end)
+
+
+-- 2. TAB COMBAT (FARM & TẤN CÔNG)
 createToggle(TabCombat, "AutoFarm", "Tự động Farm quái & La bàn", function(val)
     if val then
         selectTeam()
@@ -1993,7 +2015,7 @@ createToggle(TabCombat, "AutoKen", "Tự kích hoạt Haki Quan Sát (Ken)")
 createToggle(TabCombat, "AutoCompassTP", "Ưu tiên bay theo La bàn chỉ đường")
 
 
--- 2. TAB BOSS & RƯƠNG
+-- 3. TAB BOSS & RƯƠNG
 createToggle(TabBoss, "AutoFarmChest", "Auto nhặt Rương tiền")
 
 createSlider(TabBoss, "ChestTargetLimit", "Số rương tối đa rồi đổi Server", 10, 200, "rương", 5)
@@ -2007,7 +2029,7 @@ createButton(TabBoss, "Đổi Server (Hop Low-Player Server)", function()
 end)
 
 
--- 3. TAB SĂN TRÁI CÂY (FRUIT SNIPER)
+-- 4. TAB SĂN TRÁI CÂY (FRUIT SNIPER)
 createToggle(TabFruit, "AutoFruitSniper", "Auto nhặt & Cất Trái ác quỷ")
 
 createToggle(TabFruit, "FruitESP", "Bật vẽ ESP Trái ác quỷ")
@@ -2019,7 +2041,7 @@ createInput(TabFruit, "DiscordWebhook", "Discord Webhook URL", "Nhập Webhook �
 end)
 
 
--- 4. TAB HỆ THỐNG (SYSTEM & UTILITIES)
+-- 5. TAB HỆ THỐNG (SYSTEM & UTILITIES)
 createToggle(TabSystem, "LowGraphics", "Giảm đồ họa & Tối ưu hóa (Giảm Lag)", function(val)
     if val then optimizeGraphics() end
 end)
@@ -2123,7 +2145,7 @@ end)
 
 -- Triển khai chọn team tự động lúc đầu
 task.spawn(function()
-    task.wait(2)
+    task.wait(2.5)
     selectTeam()
 end)
 
