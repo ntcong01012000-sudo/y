@@ -12,7 +12,7 @@
 -- ═══════════════════════════════════════════════════════════════
 -- CONFIGURATION
 -- ═══════════════════════════════════════════════════════════════
-getgenv().AutoFruitSniper   = getgenv().AutoFruitSniper ~= nil and getgenv().AutoFruitSniper or true
+getgenv().AutoFruitSniper   = true -- Luôn mặc định bắt đầu chạy khi load/run script
 getgenv().FruitESP          = getgenv().FruitESP ~= nil and getgenv().FruitESP or true
 getgenv().TweenSpeed        = getgenv().TweenSpeed or 300
 getgenv().StoreRetries      = getgenv().StoreRetries or 3
@@ -50,6 +50,7 @@ local Player  = Players.LocalPlayer
 local scriptRunning = true
 local activeTween = nil
 local IsFarming = false
+local uiExists = true
 
 -- ═══════════════════════════════════════════════════════════════
 -- DISCORD WEBHOOK SENDER
@@ -200,7 +201,7 @@ LogPadding.PaddingLeft = UDim.new(0, 6)
 LogPadding.PaddingRight = UDim.new(0, 6)
 
 -- ═══════════════════════════════════════════════════════════════
--- DOCK/BUTTON CONTAINER (TẠO CÁC NÚT DỪNG SCRIPT & ĐÓNG UI)
+-- DOCK/BUTTON CONTAINER
 -- ═══════════════════════════════════════════════════════════════
 local ButtonFrame = Instance.new("Frame")
 ButtonFrame.Name = "ButtonFrame"
@@ -394,7 +395,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════
--- AUTO TEAM SELECTION WITH LOAD WAIT (CHỜ LOAD TEAM ĐẦU SCRIPT)
+-- AUTO TEAM SELECTION WITH LOAD WAIT
 -- ═══════════════════════════════════════════════════════════════
 local function WaitAndSelectTeam()
   if not getgenv().AutoSelectTeam then
@@ -484,7 +485,7 @@ local function WaitAndSelectTeam()
     end)
   end
 
-  -- Wait for Team assignment verification (LOAD TEAM)
+  -- Wait for Team assignment verification
   local elapsed = 0
   while elapsed < 10 do
     if not getgenv().AutoFruitSniper then return end
@@ -495,7 +496,7 @@ local function WaitAndSelectTeam()
     elapsed = elapsed + 0.5
   end
 
-  -- KHÔNG CÓ DELAY SAU KHI CHỌN TEAM THÀNH CÔNG (PROCEED IMMEDIATELY)
+  -- Không có delay sau khi chọn team thành công
   if Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "" then
     Notify("✅ Team loaded: " .. Player.Team.Name, "success")
   else
@@ -552,13 +553,14 @@ end
 -- ═══════════════════════════════════════════════════════════════
 -- INVISIBLE PLATFORM
 -- ═══════════════════════════════════════════════════════════════
-local block = Instance.new("Part", workspace)
+local block = Instance.new("Part")
 block.Size         = Vector3.new(1, 1, 1)
 block.Name         = "FruitSniper_Platform"
 block.Anchored     = true
 block.CanCollide   = false
 block.CanTouch     = false
 block.Transparency = 1
+block.Parent       = workspace
 
 local existingBlock = workspace:FindFirstChild(block.Name)
 if existingBlock and existingBlock ~= block then
@@ -570,18 +572,26 @@ end
 -- ═══════════════════════════════════════════════════════════════
 task.spawn(function()
   repeat task.wait()
-  until Player.Character and Player.Character.PrimaryPart
-  block.CFrame = Player.Character.PrimaryPart.CFrame
+  until (Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)) or not uiExists
+  if not uiExists then return end
+  
+  local initialChar = Player.Character
+  local initialPP = initialChar and (initialChar:FindFirstChild("HumanoidRootPart") or initialChar.PrimaryPart)
+  if initialPP then
+    block.CFrame = initialPP.CFrame
+  end
 
-  while task.wait() do
+  while task.wait() and uiExists do
     pcall(function()
       if IsFarming and getgenv().AutoFruitSniper then
         if block and block.Parent == workspace then
-          local plrPP = Player.Character and Player.Character.PrimaryPart
-          if plrPP and (plrPP.Position - block.Position).Magnitude <= 200 then
-            plrPP.CFrame = block.CFrame
-          else
-            block.CFrame = plrPP.CFrame
+          local plrPP = Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)
+          if plrPP then
+            if (plrPP.Position - block.Position).Magnitude <= 200 then
+              plrPP.CFrame = block.CFrame
+            else
+              block.CFrame = plrPP.CFrame
+            end
           end
         end
         local plrChar = Player.Character
@@ -613,12 +623,17 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════
--- TWEEN / FLY TO POSITION (DỪNG BAY LẬP TỨC KHI TẮT SCRIPT)
+-- TWEEN / FLY TO POSITION
 -- ═══════════════════════════════════════════════════════════════
 local function TweenToPosition(targetCFrame)
-  local plrPP = Player.Character and Player.Character.PrimaryPart
+  local plrPP = Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)
   if not plrPP then return end
-  local distance = (plrPP.Position - targetCFrame.p).Magnitude
+  
+  -- Đồng bộ vị trí block vào người chơi trước khi bay để đảm bảo tween mượt mà và không bị lệch
+  block.CFrame = plrPP.CFrame
+  
+  local targetPos = targetCFrame.Position or targetCFrame.p
+  local distance = (plrPP.Position - targetPos).Magnitude
   local speed = getgenv().TweenSpeed or 300
   local tweenTime = distance / speed
   if tweenTime < 0.1 then tweenTime = 0.1 end
@@ -637,7 +652,7 @@ local function TweenToPosition(targetCFrame)
     completed = true
   end)
 
-  while not completed and getgenv().AutoFruitSniper do
+  while not completed and getgenv().AutoFruitSniper and uiExists do
     task.wait(0.05)
   end
 
@@ -645,7 +660,7 @@ local function TweenToPosition(targetCFrame)
     connection:Disconnect()
   end
 
-  if not getgenv().AutoFruitSniper and activeTween then
+  if (not getgenv().AutoFruitSniper or not uiExists) and activeTween then
     activeTween:Cancel()
   end
   
@@ -661,7 +676,8 @@ local function FruitFind()
   local FoundFruit = nil
 
   for _, fruit in pairs(fruits) do
-    local plrPP = Player and Player.Character and Player.Character.PrimaryPart
+    local plrChar = Player.Character
+    local plrPP = plrChar and (plrChar:FindFirstChild("HumanoidRootPart") or plrChar.PrimaryPart)
     local isTool = fruit and fruit:IsA("Tool") and fruit:FindFirstChild("Handle")
     local isFruitNamed = fruit and string.find(fruit.Name, "Fruit") and fruit:FindFirstChild("Handle")
 
@@ -704,13 +720,13 @@ local function AddESP(Part, ESPColor)
   TL.ZIndex = 15
 
   task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait(0.5) and uiExists do
       pcall(function()
         if not Part or not Part.Parent then
           Folder:Destroy()
           return
         end
-        local plrPP = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+        local plrPP = Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)
         if plrPP and Part then
           local distance = math.floor((plrPP.Position - Part.Position).Magnitude)
           local fruitName = Part.Parent and Part.Parent.Name or "Unknown"
@@ -728,7 +744,7 @@ local function RemoveESP(Part)
 end
 
 task.spawn(function()
-  while true do
+  while uiExists do
     task.wait(1)
     if getgenv().AutoFruitSniper and getgenv().FruitESP then
       for _, obj in pairs(workspace:GetChildren()) do
@@ -794,7 +810,7 @@ local function StoreFruitWithRetry(fruitTool)
   Notify("📦 Storing: " .. fruitTool.Name .. " (" .. fruitId .. ")", "action", true)
 
   for attempt = 1, maxRetries do
-    if not getgenv().AutoFruitSniper then return false end
+    if not getgenv().AutoFruitSniper or not uiExists then return false end
     Notify("📦 Store attempt " .. attempt .. "/" .. maxRetries .. "...", "warn", true)
 
     local success, result = pcall(function()
@@ -882,11 +898,11 @@ local function ServerHop()
   local Server = nil
   local Next = nil
   local pageAttempts = 0
-  local maxPages = 5 -- We only need to check the first few pages since they contain the lowest player counts!
+  local maxPages = 5
 
   pcall(function()
     repeat
-      if not getgenv().AutoFruitSniper then return end
+      if not getgenv().AutoFruitSniper or not uiExists then return end
       local Servers = ListServers(Next)
       pageAttempts = pageAttempts + 1
 
@@ -895,7 +911,6 @@ local function ServerHop()
         for _, server in pairs(Servers.data) do
           local playing = tonumber(server.playing)
           local maxPlayers = tonumber(server.maxPlayers)
-          -- Filter for active, non-full, non-empty, and different servers
           if server.id ~= game.JobId and playing and maxPlayers 
              and playing < (maxPlayers - 1) 
              and playing >= 1 then
@@ -919,14 +934,13 @@ local function ServerHop()
     until Server or not Next or pageAttempts >= maxPages
   end)
 
-  -- Fallback to standard server hop if low-player search returned nothing
   if not Server then
     Notify("⚠️ Ascending search empty. Retrying standard search...", "warn")
     local descApiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100"
     pageAttempts = 0
     pcall(function()
       repeat
-        if not getgenv().AutoFruitSniper then return end
+        if not getgenv().AutoFruitSniper or not uiExists then return end
         local raw = game:HttpGet(descApiUrl .. ((Next and "&cursor=" .. Next) or ""))
         local Servers = HttpService:JSONDecode(raw)
         pageAttempts = pageAttempts + 1
@@ -950,7 +964,7 @@ local function ServerHop()
     end)
   end
 
-  if not getgenv().AutoFruitSniper then return end
+  if not getgenv().AutoFruitSniper or not uiExists then return end
 
   if Server then
     Notify("🌐 Found server: " .. Server.playing .. "/" .. Server.maxPlayers .. " players", "success")
@@ -988,7 +1002,7 @@ end
 -- ANTI-AFK
 -- ═══════════════════════════════════════════════════════════════
 task.spawn(function()
-  while true do
+  while uiExists do
     task.wait(60)
     if getgenv().AutoFruitSniper and getgenv().AntiAFK then
       pcall(function()
@@ -1005,11 +1019,17 @@ end)
 local function WaitForCharacter()
   local char = Player.Character or Player.CharacterAdded:Wait()
   while not (char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid")) do
-    if not getgenv().AutoFruitSniper then return nil end
+    if not getgenv().AutoFruitSniper or not uiExists then return nil end
     task.wait(0.2)
     char = Player.Character or Player.CharacterAdded:Wait()
   end
-  block.CFrame = char.HumanoidRootPart.CFrame
+  task.wait(1) -- Thời gian nghỉ an toàn (sẽ đồng bộ CFrame chính xác như code cũ)
+  if not getgenv().AutoFruitSniper or not uiExists then return nil end
+  
+  local hrp = char:FindFirstChild("HumanoidRootPart")
+  if hrp then
+    block.CFrame = hrp.CFrame
+  end
   return char
 end
 
@@ -1017,7 +1037,7 @@ end
 -- MAIN EXECUTION CONTROL FUNCTIONS
 -- ═══════════════════════════════════════════════════════════════
 local function runMainLoop()
-  while getgenv().AutoFruitSniper do
+  while getgenv().AutoFruitSniper and uiExists do
     Notify("⏳ Waiting for character...", "info", true)
     local char = WaitForCharacter()
     if not char then return end
@@ -1026,7 +1046,7 @@ local function runMainLoop()
     Notify("🔍 Scanning for fruits...", "action", true)
     local fruit = FruitFind()
 
-    if not getgenv().AutoFruitSniper then return end
+    if not getgenv().AutoFruitSniper or not uiExists then return end
 
     if fruit then
       local fruitHandle = fruit:FindFirstChild("Handle")
@@ -1040,7 +1060,7 @@ local function runMainLoop()
       Notify("📍 Location: " .. tostring(fruitHandle.Position), "fruit")
       task.wait(0.5)
 
-      if not getgenv().AutoFruitSniper then return end
+      if not getgenv().AutoFruitSniper or not uiExists then return end
 
       IsFarming = true
       Notify("✈️ Flying to " .. fruit.Name .. "...", "action", true)
@@ -1048,22 +1068,22 @@ local function runMainLoop()
       local aboveFruit = CFrame.new(fruitHandle.Position + Vector3.new(0, 5, 0))
       TweenToPosition(aboveFruit)
       
-      if not getgenv().AutoFruitSniper then return end
+      if not getgenv().AutoFruitSniper or not uiExists then return end
       task.wait(0.3)
       
       Notify("📍 Approaching fruit...", "action")
       TweenToPosition(fruitHandle.CFrame)
       
-      if not getgenv().AutoFruitSniper then return end
+      if not getgenv().AutoFruitSniper or not uiExists then return end
       task.wait(0.5)
       Notify("✅ Arrived at fruit!", "success")
 
       Notify("🤚 Grabbing " .. fruit.Name .. "...", "action", true)
 
-      local plrPP = Player.Character and Player.Character.PrimaryPart
+      local plrPP = Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)
       if plrPP and fruitHandle then
         for i = 1, 10 do
-          if not getgenv().AutoFruitSniper then return end
+          if not getgenv().AutoFruitSniper or not uiExists then return end
           if not fruit.Parent or fruit.Parent ~= workspace then
             Notify("✅ Fruit picked up!", "success")
             break
@@ -1074,7 +1094,7 @@ local function runMainLoop()
         end
       end
 
-      if not getgenv().AutoFruitSniper then return end
+      if not getgenv().AutoFruitSniper or not uiExists then return end
       task.wait(1)
 
       local inventoryFruit = FindFruitInInventory()
@@ -1090,7 +1110,7 @@ local function runMainLoop()
         end
       else
         task.wait(0.5)
-        if not getgenv().AutoFruitSniper then return end
+        if not getgenv().AutoFruitSniper or not uiExists then return end
         local retryFruit = FindFruitInInventory()
         if retryFruit then
           Notify("📦 Found fruit on retry! Storing...", "action")
@@ -1102,17 +1122,17 @@ local function runMainLoop()
 
       IsFarming = false
 
-      if not getgenv().AutoFruitSniper then return end
+      if not getgenv().AutoFruitSniper or not uiExists then return end
       Notify("⏳ Hopping in " .. getgenv().HopDelay .. "s...", "hop", true)
       
       local elapsed = 0
       while elapsed < getgenv().HopDelay do
-        if not getgenv().AutoFruitSniper then return end
+        if not getgenv().AutoFruitSniper or not uiExists then return end
         task.wait(0.5)
         elapsed = elapsed + 0.5
       end
       
-      if not getgenv().AutoFruitSniper then return end
+      if not getgenv().AutoFruitSniper or not uiExists then return end
       ServerHop()
       break
     else
@@ -1121,12 +1141,12 @@ local function runMainLoop()
       
       local elapsed = 0
       while elapsed < getgenv().HopDelay do
-        if not getgenv().AutoFruitSniper then return end
+        if not getgenv().AutoFruitSniper or not uiExists then return end
         task.wait(0.5)
         elapsed = elapsed + 0.5
       end
       
-      if not getgenv().AutoFruitSniper then return end
+      if not getgenv().AutoFruitSniper or not uiExists then return end
       ServerHop()
       break
     end
@@ -1175,6 +1195,7 @@ end
 
 -- Close UI, stop scripts, delete elements
 local function closeUI()
+  uiExists = false
   stopScript()
   if block then block:Destroy() end
   if ScreenGui then ScreenGui:Destroy() end
