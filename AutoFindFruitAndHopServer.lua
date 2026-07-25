@@ -5,7 +5,7 @@
   ║              Built for LEARNING purposes only                ║
   ║                + AUTO TEAM SELECTION (REMOTE)                ║
   ║                + DISCORD WEBHOOK NOTIFICATIONS               ║
-  ║                + STOP / CLOSE BUTTONS + LOW PLAYER HOP       ║
+  ║                + STOP / CLOSE BUTTONS + HIGH PLAYER HOP      ║
   ╚══════════════════════════════════════════════════════════════╝
 ]]
 
@@ -845,14 +845,14 @@ local function FindFruitInInventory()
 
   if plrChar then
     for _, tool in pairs(plrChar:GetChildren()) do
-      if tool:IsA("Tool") and tool:FindFirstChild("Fruit") then
+      if tool:IsA("Tool") and (tool:FindFirstChild("Fruit") or tool:FindFirstChild("EatRemote") or Get_Fruit(tool.Name) or string.find(tool.Name, "Fruit")) then
         return tool
       end
     end
   end
   if plrBag then
     for _, tool in pairs(plrBag:GetChildren()) do
-      if tool:IsA("Tool") and tool:FindFirstChild("Fruit") then
+      if tool:IsA("Tool") and (tool:FindFirstChild("Fruit") or tool:FindFirstChild("EatRemote") or Get_Fruit(tool.Name) or string.find(tool.Name, "Fruit")) then
         return tool
       end
     end
@@ -933,10 +933,10 @@ end
 print("[FruitSniper] 🌊 Detected: " .. CurrentSea .. " (PlaceId: " .. CurrentPlaceId .. ")")
 
 -- ═══════════════════════════════════════════════════════════════
--- LOW PLAYER SERVER HOP (CHỌN SERVER ÍT NGƯỜI NHẤT)
+-- HIGH PLAYER SERVER HOP (CHỌN SERVER NHIỀU NGƯỜI NHẤT MÀ KHÔNG FULL)
 -- ═══════════════════════════════════════════════════════════════
 local function ServerHop()
-  Notify("🔄 Searching for low-player servers (sort=Asc)...", "hop", true)
+  Notify("🔄 Searching for high-player servers (sort=Desc)...", "hop", true)
 
   pcall(function()
     local queueteleport = (syn and syn.queue_on_teleport)
@@ -948,8 +948,8 @@ local function ServerHop()
     end
   end)
 
-  -- Use sortOrder=Asc to fetch the least populated servers first
-  local apiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+  -- Use sortOrder=Desc & excludeFullGames=true to fetch populated servers first
+  local apiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100"
 
   local function ListServers(cursor)
     local success, raw = pcall(function()
@@ -978,7 +978,7 @@ local function ServerHop()
           local playing = tonumber(server.playing)
           local maxPlayers = tonumber(server.maxPlayers)
           if server.id ~= game.JobId and playing and maxPlayers 
-             and playing < (maxPlayers - 1) 
+             and playing < maxPlayers 
              and playing >= 1 then
             table.insert(candidates, server)
           end
@@ -986,7 +986,7 @@ local function ServerHop()
 
         if #candidates > 0 then
           table.sort(candidates, function(a, b)
-            return a.playing < b.playing
+            return a.playing > b.playing
           end)
           Server = candidates[1]
           break
@@ -1001,25 +1001,25 @@ local function ServerHop()
   end)
 
   if not Server then
-    Notify("⚠️ Ascending search empty. Retrying standard search...", "warn")
-    local descApiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100"
+    Notify("⚠️ Descending search empty. Retrying fallback search...", "warn")
+    local ascApiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
     pageAttempts = 0
     pcall(function()
       repeat
         if not getgenv().AutoFruitSniper or not uiExists then return end
-        local raw = game:HttpGet(descApiUrl .. ((Next and "&cursor=" .. Next) or ""))
+        local raw = game:HttpGet(ascApiUrl .. ((Next and "&cursor=" .. Next) or ""))
         local Servers = HttpService:JSONDecode(raw)
         pageAttempts = pageAttempts + 1
         if Servers and Servers.data then
           local candidates = {}
           for _, server in pairs(Servers.data) do
             if server.id ~= game.JobId and server.playing and server.maxPlayers 
-               and server.playing < (server.maxPlayers - 1) then
+               and server.playing < server.maxPlayers then
               table.insert(candidates, server)
             end
           end
           if #candidates > 0 then
-            table.sort(candidates, function(a, b) return a.playing < b.playing end)
+            table.sort(candidates, function(a, b) return a.playing > b.playing end)
             Server = candidates[1]
             break
           end
@@ -1108,6 +1108,21 @@ local function runMainLoop()
     local char = WaitForCharacter()
     if not char then return end
     Notify("✅ Character loaded!", "success")
+
+    -- Check if player is already holding a fruit and store it first
+    local inventoryFruit = FindFruitInInventory()
+    if inventoryFruit then
+      Notify("📦 Already holding a fruit: " .. inventoryFruit.Name .. "! Storing first...", "action", true)
+      local stored = StoreFruitWithRetry(inventoryFruit)
+      if stored then
+        Notify("✅ Stored pre-existing fruit successfully!", "success")
+      else
+        Notify("⚠️ Could not store pre-existing fruit (possibly storage full). Hopping...", "warn", true)
+        task.wait(1)
+        ServerHop()
+        break
+      end
+    end
 
     Notify("🔍 Scanning for fruits...", "action", true)
     local fruit = FruitFind()
