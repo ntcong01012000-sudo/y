@@ -26,7 +26,10 @@ getgenv().DiscordWebhook    = getgenv().DiscordWebhook or ""
 -- ═══════════════════════════════════════════════════════════════
 -- WAIT FOR GAME TO FULLY LOAD
 -- ═══════════════════════════════════════════════════════════════
-repeat task.wait() until game:IsLoaded()
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+task.wait(1)
 
 -- ═══════════════════════════════════════════════════════════════
 -- SERVICES
@@ -403,45 +406,9 @@ local function WaitAndSelectTeam()
     return
   end
 
-  Notify("⏳ Waiting for game resources...", "info", true)
-  local success, remotes = pcall(function()
-    return ReplicatedStorage:WaitForChild("Remotes", 30)
-  end)
-  if not success or not remotes then
-    Notify("❌ Remotes folder not found.", "warn", true)
-  end
-  
-  local playerGui = Player:WaitForChild("PlayerGui", 30)
-  if not playerGui then
-    Notify("❌ PlayerGui not found. Cannot proceed.", "error", true)
-    return
-  end
-
   -- Wait for Team to be set or select one
   if Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "" then
     Notify("✅ Team already loaded: " .. Player.Team.Name, "success")
-    return
-  end
-
-  Notify("⏳ Waiting for team selection GUI to load...", "warn", true)
-  
-  local mainGui = playerGui:WaitForChild("Main", 30)
-  local chooseTeam = mainGui and mainGui:WaitForChild("ChooseTeam", 30)
-  
-  if chooseTeam then
-    local elapsed = 0
-    while elapsed < 30 do
-      if not getgenv().AutoFruitSniper then return end
-      if chooseTeam.Visible == true or (Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "") then
-        break
-      end
-      task.wait(0.5)
-      elapsed = elapsed + 0.5
-    end
-  end
-
-  if Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "" then
-    Notify("✅ Team loaded: " .. Player.Team.Name, "success")
     return
   end
 
@@ -469,20 +436,6 @@ local function WaitAndSelectTeam()
       teamSuccess = true
       break
     end
-  end
-
-  -- Fallback click
-  if not teamSuccess and chooseTeam then
-    Notify("🔄 SetTeam Remote failed. Attempting GUI click fallback...", "warn", true)
-    pcall(function()
-      local container = chooseTeam:WaitForChild("Container", 5)
-      local button = container:WaitForChild(teamName, 5):WaitForChild("Frame", 5):WaitForChild("ViewportFrame", 5):WaitForChild("TextButton", 5)
-      if button then
-        for _, conn in pairs(getconnections(button.MouseButton1Click)) do
-          conn.Function()
-        end
-      end
-    end)
   end
 
   -- Wait for Team assignment verification
