@@ -994,6 +994,7 @@ task.wait(0.5)
 
 -- Execute auto team wait & selection
 WaitAndSelectTeam()
+task.wait(3)
 
 -- Execute main loop
 task.spawn(runMainLoop)
