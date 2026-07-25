@@ -1,35 +1,29 @@
 --[[
   ╔══════════════════════════════════════════════════════════════╗
-  ║           BLOX FRUIT - AUTO FRUIT SNIPER SCRIPT              ║
-  ║       Scan → Fly → Grab → Store (3 retries) → Hop            ║
-  ║              Built for LEARNING purposes only                ║
-  ║                + AUTO TEAM SELECTION (REMOTE)                ║
-  ║                + DISCORD WEBHOOK NOTIFICATIONS               ║
-  ║                + STOP / CLOSE BUTTONS + HIGH PLAYER HOP      ║
+  ║           BLOX FRUIT - AUTO FRUIT SNIPER SCRIPT             ║
+  ║       Scan → Fly → Grab → Store (3 retries) → Hop          ║
+  ║              Built for LEARNING purposes only               ║
+  ║               + AUTO TEAM SELECTION (SETTEAM)               ║
   ╚══════════════════════════════════════════════════════════════╝
 ]]
 
 -- ═══════════════════════════════════════════════════════════════
--- CONFIGURATION
--- ═══════════════════════════════════════════════════════════════
-getgenv().AutoFruitSniper   = true -- Luôn mặc định bắt đầu chạy khi load/run script
-getgenv().FruitESP          = getgenv().FruitESP ~= nil and getgenv().FruitESP or true
-getgenv().TweenSpeed        = getgenv().TweenSpeed or 300
-getgenv().StoreRetries      = getgenv().StoreRetries or 3
-getgenv().HopDelay          = getgenv().HopDelay or 3
-getgenv().ScanInterval      = getgenv().ScanInterval or 0.5
-getgenv().AntiAFK           = getgenv().AntiAFK ~= nil and getgenv().AntiAFK or true
-getgenv().AutoSelectTeam    = getgenv().AutoSelectTeam ~= nil and getgenv().AutoSelectTeam or true
-getgenv().Team              = getgenv().Team or 0        -- 0 = Marines, 1 = Pirates
-getgenv().DiscordWebhook    = getgenv().DiscordWebhook or ""
-
--- ═══════════════════════════════════════════════════════════════
 -- WAIT FOR GAME TO FULLY LOAD
 -- ═══════════════════════════════════════════════════════════════
-if not game:IsLoaded() then
-    game.Loaded:Wait()
-end
-task.wait(1)
+repeat task.wait() until game:IsLoaded()
+
+-- ═══════════════════════════════════════════════════════════════
+-- CONFIGURATION
+-- ═══════════════════════════════════════════════════════════════
+getgenv().AutoFruitSniper   = true   -- Master toggle for the script
+getgenv().FruitESP          = true   -- Show ESP on fruits
+getgenv().TweenSpeed        = 300    -- Flight speed (studs/sec)
+getgenv().StoreRetries      = 3      -- Max store attempts before giving up
+getgenv().HopDelay          = 3      -- Seconds to wait before server hop
+getgenv().ScanInterval      = 0.5    -- How often to scan for fruits (seconds)
+getgenv().AntiAFK           = true   -- Prevent AFK kick
+getgenv().AutoSelectTeam    = true   -- Auto select team when entering game
+getgenv().Team              = "Marines" -- "Marines" or "Pirates"
 
 -- ═══════════════════════════════════════════════════════════════
 -- SERVICES
@@ -50,60 +44,9 @@ local CommF   = Remotes:WaitForChild("CommF_", 9e9)
 local Player  = Players.LocalPlayer
 
 -- Global execution states
-local scriptRunning = true
 local activeTween = nil
 local IsFarming = false
 local uiExists = true
-
--- ═══════════════════════════════════════════════════════════════
--- DISCORD WEBHOOK SENDER
--- ═══════════════════════════════════════════════════════════════
-local function SendDiscordWebhook(fruitName, serverInfo)
-    local webhookUrl = getgenv().DiscordWebhook
-    if not webhookUrl or webhookUrl == "" then return end
-
-    local playerName = Player.Name
-    local placeId = game.PlaceId
-    local jobId = game.JobId
-    local serverText = serverInfo or ("Place ID: " .. placeId .. ", Job ID: " .. jobId)
-
-    local embed = {
-        ["title"] = "🍎 Fruit Sniper - Fruit Stored!",
-        ["description"] = "**" .. playerName .. "** has successfully stored a **" .. fruitName .. "**!",
-        ["color"] = 0x00ff00,
-        ["fields"] = {
-            {
-                ["name"] = "Fruit",
-                ["value"] = fruitName,
-                ["inline"] = true
-            },
-            {
-                ["name"] = "Player",
-                ["value"] = playerName,
-                ["inline"] = true
-            },
-            {
-                ["name"] = "Server",
-                ["value"] = serverText,
-                ["inline"] = false
-            }
-        },
-        ["footer"] = {
-            ["text"] = "Auto Fruit Sniper • " .. os.date("%Y-%m-%d %H:%M:%S")
-        }
-    }
-
-    local payload = {
-        ["embeds"] = {embed}
-    }
-
-    pcall(function()
-        game:HttpGet(webhookUrl, true, "POST", {
-            ["Content-Type"] = "application/json"
-        }, HttpService:JSONEncode(payload))
-        print("[FruitSniper] Webhook sent.")
-    end)
-end
 
 -- ═══════════════════════════════════════════════════════════════
 -- IN-GAME GUI NOTIFICATION SYSTEM
@@ -119,7 +62,7 @@ ScreenGui.Parent = Player:WaitForChild("PlayerGui")
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 340, 0, 310)
+MainFrame.Size = UDim2.new(0, 340, 0, 260)
 MainFrame.Position = UDim2.new(0, 15, 0, 15)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 MainFrame.BackgroundTransparency = 0.15
@@ -180,7 +123,7 @@ StatusLabel.Parent = MainFrame
 
 local LogFrame = Instance.new("ScrollingFrame")
 LogFrame.Name = "LogFrame"
-LogFrame.Size = UDim2.new(1, -20, 0, 180)
+LogFrame.Size = UDim2.new(1, -20, 1, -80)
 LogFrame.Position = UDim2.new(0, 10, 0, 74)
 LogFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 15)
 LogFrame.BackgroundTransparency = 0.3
@@ -203,76 +146,6 @@ LogPadding.PaddingTop = UDim.new(0, 4)
 LogPadding.PaddingLeft = UDim.new(0, 6)
 LogPadding.PaddingRight = UDim.new(0, 6)
 
--- ═══════════════════════════════════════════════════════════════
--- DOCK/BUTTON CONTAINER
--- ═══════════════════════════════════════════════════════════════
-local ButtonFrame = Instance.new("Frame")
-ButtonFrame.Name = "ButtonFrame"
-ButtonFrame.Size = UDim2.new(1, -20, 0, 36)
-ButtonFrame.Position = UDim2.new(0, 10, 1, -48)
-ButtonFrame.BackgroundTransparency = 1
-ButtonFrame.Parent = MainFrame
-
-local ButtonLayout = Instance.new("UIListLayout", ButtonFrame)
-ButtonLayout.FillDirection = Enum.FillDirection.Horizontal
-ButtonLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ButtonLayout.Padding = UDim.new(0, 10)
-
--- Stop / Start Button
-local StopButton = Instance.new("TextButton")
-StopButton.Name = "StopButton"
-StopButton.Size = UDim2.new(0.5, -5, 1, 0)
-StopButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-StopButton.BorderSizePixel = 0
-StopButton.Text = "🛑 STOP SCRIPT"
-StopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-StopButton.Font = Enum.Font.GothamBold
-StopButton.TextSize = 12
-StopButton.AutoButtonColor = false
-StopButton.Parent = ButtonFrame
-
-local StopCorner = Instance.new("UICorner", StopButton)
-StopCorner.CornerRadius = UDim.new(0, 6)
-
-local StopGradient = Instance.new("UIGradient", StopButton)
-StopGradient.Color = ColorSequence.new({
-  ColorSequenceKeypoint.new(0, Color3.fromRGB(200, 50, 50)),
-  ColorSequenceKeypoint.new(1, Color3.fromRGB(140, 20, 20))
-})
-
-local StopStroke = Instance.new("UIStroke", StopButton)
-StopStroke.Color = Color3.fromRGB(255, 100, 100)
-StopStroke.Thickness = 1
-StopStroke.Transparency = 0.5
-
--- Close UI Button
-local CloseButton = Instance.new("TextButton")
-CloseButton.Name = "CloseButton"
-CloseButton.Size = UDim2.new(0.5, -5, 1, 0)
-CloseButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-CloseButton.BorderSizePixel = 0
-CloseButton.Text = "❌ CLOSE UI"
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.TextSize = 12
-CloseButton.AutoButtonColor = false
-CloseButton.Parent = ButtonFrame
-
-local CloseCorner = Instance.new("UICorner", CloseButton)
-CloseCorner.CornerRadius = UDim.new(0, 6)
-
-local CloseGradient = Instance.new("UIGradient", CloseButton)
-CloseGradient.Color = ColorSequence.new({
-  ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 80, 90)),
-  ColorSequenceKeypoint.new(1, Color3.fromRGB(45, 45, 55))
-})
-
-local CloseStroke = Instance.new("UIStroke", CloseButton)
-CloseStroke.Color = Color3.fromRGB(120, 120, 130)
-CloseStroke.Thickness = 1
-CloseStroke.Transparency = 0.5
-
--- Color Table for log messages
 local MSG_COLORS = {
   success = Color3.fromRGB(80, 255, 80),
   error   = Color3.fromRGB(255, 80, 80),
@@ -310,151 +183,7 @@ local function Notify(message, msgType, isStatus)
     LogFrame.CanvasPosition = Vector2.new(0, LogFrame.AbsoluteCanvasSize.Y)
   end)
   print("[FruitSniper] " .. message)
-  local children = LogFrame:GetChildren()
-  local labels = {}
-  for _, child in pairs(children) do
-    if child:IsA("TextLabel") then
-      table.insert(labels, child)
-    end
-  end
-  if #labels > 50 then
-    table.sort(labels, function(a, b) return a.LayoutOrder < b.LayoutOrder end)
-    labels[1]:Destroy()
-  end
 end
-
--- Dragging code for TitleBar
-local dragging, dragInput, dragStart, startPos
-local function update(input)
-  local delta = input.Position - dragStart
-  MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-
-TitleBar.InputBegan:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    dragging = true
-    dragStart = input.Position
-    startPos = MainFrame.Position
-    
-    input.Changed:Connect(function()
-      if input.UserInputState == Enum.UserInputState.End then
-        dragging = false
-      end
-    end)
-  end
-end)
-
-TitleBar.InputChanged:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-    dragInput = input
-  end
-end)
-
-game:GetService("UserInputService").InputChanged:Connect(function(input)
-  if input == dragInput and dragging then
-    update(input)
-  end
-end)
-
--- Button Hover Effects
-StopButton.MouseEnter:Connect(function()
-  TweenService:Create(StopButton, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
-  TweenService:Create(StopStroke, TweenInfo.new(0.2), {Transparency = 0.2}):Play()
-end)
-StopButton.MouseLeave:Connect(function()
-  TweenService:Create(StopButton, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
-  TweenService:Create(StopStroke, TweenInfo.new(0.2), {Transparency = 0.5}):Play()
-end)
-
-CloseButton.MouseEnter:Connect(function()
-  TweenService:Create(CloseButton, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
-  TweenService:Create(CloseStroke, TweenInfo.new(0.2), {Transparency = 0.2}):Play()
-end)
-CloseButton.MouseLeave:Connect(function()
-  TweenService:Create(CloseButton, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play()
-  TweenService:Create(CloseStroke, TweenInfo.new(0.2), {Transparency = 0.5}):Play()
-end)
-
--- Toggle Button (Icon)
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Name = "ToggleButton"
-ToggleButton.Size = UDim2.new(0, 45, 0, 45)
-ToggleButton.Position = UDim2.new(0, 15, 0, 335)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-ToggleButton.BackgroundTransparency = 1
-ToggleButton.BorderSizePixel = 0
-ToggleButton.Text = "🍎"
-ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleButton.TextSize = 20
-ToggleButton.TextTransparency = 1
-ToggleButton.Font = Enum.Font.GothamBold
-ToggleButton.Parent = ScreenGui
-
-local ToggleCorner = Instance.new("UICorner", ToggleButton)
-ToggleCorner.CornerRadius = UDim.new(0, 22.5)
-
-local ToggleStroke = Instance.new("UIStroke", ToggleButton)
-ToggleStroke.Color = Color3.fromRGB(100, 50, 255)
-ToggleStroke.Thickness = 1.5
-ToggleStroke.Transparency = 0.3
-
--- Toggle frame visibility
-ToggleButton.MouseButton1Click:Connect(function()
-  MainFrame.Visible = not MainFrame.Visible
-end)
-
--- Dragging code for ToggleButton
-local dragToggle, dragToggleInput, dragToggleStart, startTogglePos
-ToggleButton.InputBegan:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-    dragToggle = true
-    dragToggleStart = input.Position
-    startTogglePos = ToggleButton.Position
-    
-    input.Changed:Connect(function()
-      if input.UserInputState == Enum.UserInputState.End then
-        dragToggle = false
-      end
-    end)
-  end
-end)
-
-ToggleButton.InputChanged:Connect(function(input)
-  if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-    dragToggleInput = input
-  end
-end)
-
-game:GetService("UserInputService").InputChanged:Connect(function(input)
-  if input == dragToggleInput and dragToggle then
-    local delta = input.Position - dragToggleStart
-    ToggleButton.Position = UDim2.new(startTogglePos.X.Scale, startTogglePos.X.Offset + delta.X, startTogglePos.Y.Scale, startTogglePos.Y.Offset + delta.Y)
-  end
-end)
-
--- Intro fade-in animation
-MainFrame.BackgroundTransparency = 1
-TitleBar.BackgroundTransparency = 1
-TitleFix.BackgroundTransparency = 1
-TitleLabel.TextTransparency = 1
-StatusLabel.TextTransparency = 1
-LogFrame.BackgroundTransparency = 1
-StopButton.BackgroundTransparency = 1
-CloseButton.BackgroundTransparency = 1
-
-task.spawn(function()
-  local fadeIn = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.15})
-  local fadeTitle = TweenService:Create(TitleBar, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.4})
-  local fadeTitleFix = TweenService:Create(TitleFix, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.4})
-  local fadeTitleText = TweenService:Create(TitleLabel, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {TextTransparency = 0})
-  local fadeStatus = TweenService:Create(StatusLabel, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {TextTransparency = 0})
-  local fadeLog = TweenService:Create(LogFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.3})
-  local fadeBtn1 = TweenService:Create(StopButton, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0})
-  local fadeBtn2 = TweenService:Create(CloseButton, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0})
-  local fadeToggle = TweenService:Create(ToggleButton, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.15, TextTransparency = 0})
-  
-  fadeIn:Play() fadeTitle:Play() fadeTitleFix:Play() fadeTitleText:Play() fadeStatus:Play() fadeLog:Play() fadeBtn1:Play() fadeBtn2:Play() fadeToggle:Play()
-end)
 
 -- ═══════════════════════════════════════════════════════════════
 -- AUTO TEAM SELECTION WITH LOAD WAIT
@@ -471,7 +200,7 @@ local function WaitAndSelectTeam()
     return
   end
 
-  local teamValue = getgenv().Team or 0 -- 0 = Marines, 1 = Pirates
+  local teamValue = getgenv().Team or "Marines"
   local teamName = "Marines"
   if typeof(teamValue) == "string" then
     if teamValue:lower():find("pirate") then
@@ -484,35 +213,39 @@ local function WaitAndSelectTeam()
   Notify("⏳ Selecting team: " .. teamName .. "...", "action", true)
   
   -- Try SetTeam via Remote
-  local teamSuccess = false
-  for i = 1, 10 do
+  for i = 1, 15 do
     if not getgenv().AutoFruitSniper then return end
     pcall(function()
       CommF:InvokeServer("SetTeam", teamName)
     end)
-    task.wait(0.2)
-    if Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "" then
-      teamSuccess = true
-      break
-    end
-  end
-
-  -- Wait for Team assignment verification
-  local elapsed = 0
-  while elapsed < 10 do
-    if not getgenv().AutoFruitSniper then return end
-    if Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "" then
-      break
-    end
     task.wait(0.5)
-    elapsed = elapsed + 0.5
+    if Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "" then
+      break
+    end
   end
 
-  -- Không có delay sau khi chọn team thành công
+  -- Fallback: Click GUI if still neutral
+  if not (Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "") then
+    pcall(function()
+      local playerGui = Player:WaitForChild("PlayerGui", 5)
+      local mainGui = playerGui:WaitForChild("Main", 3)
+      local chooseTeam = mainGui:WaitForChild("ChooseTeam", 3)
+      local container = chooseTeam:WaitForChild("Container", 2)
+      local button = container:WaitForChild(teamName, 2):WaitForChild("Frame", 1):WaitForChild("ViewportFrame", 1):WaitForChild("TextButton", 1)
+      
+      if button then
+        for _, conn in pairs(getconnections(button.MouseButton1Click)) do
+          conn.Function()
+        end
+      end
+    end)
+  end
+
+  task.wait(1)
   if Player.Team and Player.Team.Name ~= "Neutral" and Player.Team.Name ~= "" then
     Notify("✅ Team loaded: " .. Player.Team.Name, "success")
   else
-    Notify("⚠️ Could not verify Team selection. Proceeding anyway...", "warn", true)
+    Notify("⚠️ Could not verify Team selection. Proceeding...", "warn", true)
   end
 end
 
@@ -599,11 +332,7 @@ task.spawn(function()
         if block and block.Parent == workspace then
           local plrPP = Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)
           if plrPP then
-            if (plrPP.Position - block.Position).Magnitude <= 200 then
-              plrPP.CFrame = block.CFrame
-            else
-              block.CFrame = plrPP.CFrame
-            end
+            plrPP.CFrame = block.CFrame
           end
         end
         local plrChar = Player.Character
@@ -736,7 +465,7 @@ end
 -- ═══════════════════════════════════════════════════════════════
 -- FRUIT FINDER
 -- ═══════════════════════════════════════════════════════════════
-local function FruitFind()
+function FruitFind()
   local fruits = workspace:GetChildren()
   local FruitDistance = math.huge
   local FoundFruit = nil
@@ -839,7 +568,7 @@ end)
 -- ═══════════════════════════════════════════════════════════════
 -- CHECK IF FRUIT IS IN INVENTORY
 -- ═══════════════════════════════════════════════════════════════
-local function FindFruitInInventory()
+function FindFruitInInventory()
   local plrChar = Player and Player.Character
   local plrBag  = Player and Player.Backpack
 
@@ -864,7 +593,7 @@ end
 -- ═══════════════════════════════════════════════════════════════
 -- STORE FRUIT WITH RETRIES
 -- ═══════════════════════════════════════════════════════════════
-local function StoreFruitWithRetry(fruitTool)
+function StoreFruitWithRetry(fruitTool)
   local maxRetries = getgenv().StoreRetries or 3
   local fruitId = Get_Fruit(fruitTool.Name)
 
@@ -885,8 +614,6 @@ local function StoreFruitWithRetry(fruitTool)
 
     if success and result == true then
       Notify("✅ STORED " .. fruitTool.Name .. " on attempt " .. attempt .. "!", "success", true)
-      local serverInfo = "Place ID: " .. game.PlaceId .. ", Job ID: " .. game.JobId
-      SendDiscordWebhook(fruitTool.Name, serverInfo)
       return true
     else
       Notify("❌ Attempt " .. attempt .. " failed: " .. tostring(result), "error")
@@ -935,7 +662,7 @@ print("[FruitSniper] 🌊 Detected: " .. CurrentSea .. " (PlaceId: " .. CurrentP
 -- ═══════════════════════════════════════════════════════════════
 -- HIGH PLAYER SERVER HOP (CHỌN SERVER NHIỀU NGƯỜI NHẤT MÀ KHÔNG FULL)
 -- ═══════════════════════════════════════════════════════════════
-local function ServerHop()
+function ServerHop()
   while getgenv().AutoFruitSniper and uiExists do
     Notify("🔄 Searching for high-player servers (sort=Desc)...", "hop", true)
 
@@ -944,7 +671,7 @@ local function ServerHop()
         or queue_on_teleport
         or (fluxus and fluxus.queue_on_teleport)
       if queueteleport then
-        queueteleport('loadstring(readfile("BloxFruit_AutoFruit.lua"))()')
+        queueteleport('getgenv().AutoFruitSniper = true; getgenv().FruitESP = true; getgenv().TweenSpeed = 300; getgenv().StoreRetries = 3; getgenv().HopDelay = 3; getgenv().ScanInterval = 0.5; getgenv().AntiAFK = true; getgenv().AutoSelectTeam = true; getgenv().Team = "' .. tostring(getgenv().Team or "Marines") .. '"; loadstring(game:HttpGet("https://raw.githubusercontent.com/GujjetiMokshithcode/BloxFruitAutoFruitSniper/refs/heads/main/BloxFruit_AutoFruit.lua"))()')
         Notify("📋 Script queued for next server", "info")
       end
     end)
@@ -1090,7 +817,7 @@ local function WaitForCharacter()
     task.wait(0.2)
     char = Player.Character or Player.CharacterAdded:Wait()
   end
-  task.wait(1) -- Thời gian nghỉ an toàn (sẽ đồng bộ CFrame chính xác như code cũ)
+  task.wait(1) -- Safety rest delay
   if not getgenv().AutoFruitSniper or not uiExists then return nil end
   
   local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -1142,78 +869,75 @@ local function runMainLoop()
       Notify("📍 Location: " .. tostring(fruitHandle.Position), "fruit")
       task.wait(0.5)
 
-      if not getgenv().AutoFruitSniper or not uiExists then return end
-
-      IsFarming = true
-      Notify("✈️ Flying to " .. fruit.Name .. "...", "action", true)
-
-      local aboveFruit = CFrame.new(fruitHandle.Position + Vector3.new(0, 5, 0))
-      TweenToPosition(aboveFruit, fruit)
+      local grabSuccess = false
+      local maxGrabAttempts = 3
       
-      if not getgenv().AutoFruitSniper or not uiExists then return end
-      if not FruitFind() or not fruit or not fruit.Parent or fruit.Parent ~= workspace then
-        Notify("⚠️ Fruit disappeared during flight. Hopping...", "warn", true)
-        IsFarming = false
-        task.wait(1)
-        ServerHop()
-        break
-      end
-      task.wait(0.3)
-      
-      Notify("📍 Approaching fruit...", "action")
-      TweenToPosition(fruitHandle.CFrame, fruit)
-      
-      if not getgenv().AutoFruitSniper or not uiExists then return end
-      if not FruitFind() or not fruit or not fruit.Parent or fruit.Parent ~= workspace then
-        Notify("⚠️ Fruit disappeared during approach. Hopping...", "warn", true)
-        IsFarming = false
-        task.wait(1)
-        ServerHop()
-        break
-      end
-      task.wait(0.5)
-      Notify("✅ Arrived at fruit!", "success")
-
-      Notify("🤚 Grabbing " .. fruit.Name .. "...", "action", true)
-
-      local plrPP = Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)
-      if plrPP and fruitHandle then
-        for i = 1, 10 do
-          if not getgenv().AutoFruitSniper or not uiExists then return end
-          if not fruit.Parent or fruit.Parent ~= workspace then
-            Notify("✅ Fruit picked up!", "success")
-            break
-          end
-          plrPP.CFrame = fruitHandle.CFrame
-          block.CFrame = fruitHandle.CFrame
-          task.wait(0.2)
-        end
-      end
-
-      if not getgenv().AutoFruitSniper or not uiExists then return end
-      task.wait(1)
-
-      local inventoryFruit = FindFruitInInventory()
-
-      if inventoryFruit then
-        Notify("📦 Fruit in inventory! Storing...", "action", true)
-        local stored = StoreFruitWithRetry(inventoryFruit)
-
-        if stored then
-          Notify("✅ Fruit stored successfully!", "success", true)
-        else
-          Notify("⚠️ Store failed. Hopping anyway...", "warn", true)
-        end
-      else
-        task.wait(0.5)
+      for attempt = 1, maxGrabAttempts do
         if not getgenv().AutoFruitSniper or not uiExists then return end
-        local retryFruit = FindFruitInInventory()
-        if retryFruit then
-          Notify("📦 Found fruit on retry! Storing...", "action")
-          StoreFruitWithRetry(retryFruit)
-        else
-          Notify("⚠️ Fruit not in inventory. Pickup may have failed.", "warn", true)
+        if not fruit.Parent or fruit.Parent ~= workspace then
+          break
         end
+        
+        Notify("✈️ Flying to " .. fruit.Name .. " (Attempt " .. attempt .. "/" .. maxGrabAttempts .. ")...", "action", true)
+        IsFarming = true
+        
+        local aboveFruit = CFrame.new(fruitHandle.Position + Vector3.new(0, 5, 0))
+        TweenToPosition(aboveFruit, fruit)
+        
+        if not getgenv().AutoFruitSniper or not uiExists then return end
+        if not fruit.Parent or fruit.Parent ~= workspace then
+          break
+        end
+        
+        task.wait(0.2)
+        Notify("📍 Approaching fruit...", "action")
+        TweenToPosition(fruitHandle.CFrame, fruit)
+        
+        if not getgenv().AutoFruitSniper or not uiExists then return end
+        if not fruit.Parent or fruit.Parent ~= workspace then
+          break
+        end
+        
+        task.wait(0.5)
+        Notify("🤚 Grabbing " .. fruit.Name .. "...", "action", true)
+
+        local plrPP = Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)
+        if plrPP and fruitHandle then
+          for i = 1, 10 do
+            if not getgenv().AutoFruitSniper or not uiExists then return end
+            if not fruit.Parent or fruit.Parent ~= workspace then
+              break
+            end
+            plrPP.CFrame = fruitHandle.CFrame
+            block.CFrame = fruitHandle.CFrame
+            task.wait(0.2)
+          end
+        end
+
+        task.wait(1)
+        local inventoryFruit = FindFruitInInventory()
+        if inventoryFruit then
+          grabSuccess = true
+          Notify("📦 Fruit in inventory! Storing...", "action", true)
+          local stored = StoreFruitWithRetry(inventoryFruit)
+          if stored then
+            Notify("✅ Fruit stored successfully!", "success", true)
+          else
+            Notify("⚠️ Store failed (possibly storage full).", "warn", true)
+          end
+          break
+        end
+        
+        Notify("⚠️ Attempt " .. attempt .. " failed to grab fruit. Retrying...", "warn")
+        IsFarming = false
+        task.wait(1)
+      end
+
+      if not getgenv().AutoFruitSniper or not uiExists then return end
+      
+      -- If the fruit is still in workspace and grab failed after all attempts, hop server
+      if not grabSuccess and fruit.Parent == workspace then
+        Notify("⚠️ All grab attempts failed. Hopping...", "warn", true)
       end
 
       IsFarming = false
@@ -1249,79 +973,6 @@ local function runMainLoop()
   end
 end
 
--- Stop script and cleanup states
-local function stopScript()
-  scriptRunning = false
-  getgenv().AutoFruitSniper = false
-  IsFarming = false
-  if activeTween then
-    activeTween:Cancel()
-    activeTween = nil
-  end
-  pcall(function()
-    local plrChar = Player.Character
-    if plrChar then
-      for _, part in pairs(plrChar:GetChildren()) do
-        if part:IsA("BasePart") then
-          part.CanCollide = true
-        end
-      end
-    end
-  end)
-  -- Remove existing ESP
-  for _, obj in pairs(workspace:GetChildren()) do
-    pcall(function()
-      if obj and obj:IsA("Tool") and obj:FindFirstChild("Handle") then
-        RemoveESP(obj.Handle)
-      elseif obj and string.find(obj.Name, "Fruit") and obj:FindFirstChild("Handle") then
-        RemoveESP(obj.Handle)
-      end
-    end)
-  end
-  Notify("🛑 Script Stopped!", "error", true)
-end
-
--- Start script states
-local function startScript()
-  scriptRunning = true
-  getgenv().AutoFruitSniper = true
-  Notify("▶️ Script Started!", "success", true)
-  task.spawn(runMainLoop)
-end
-
--- Close UI, stop scripts, delete elements
-local function closeUI()
-  uiExists = false
-  stopScript()
-  if block then block:Destroy() end
-  if ScreenGui then ScreenGui:Destroy() end
-end
-
--- Connect UI controls
-StopButton.MouseButton1Click:Connect(function()
-  if scriptRunning then
-    stopScript()
-    StopButton.Text = "▶️ START SCRIPT"
-    StopGradient.Color = ColorSequence.new({
-      ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 180, 60)),
-      ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 120, 30))
-    })
-    StopStroke.Color = Color3.fromRGB(100, 255, 100)
-  else
-    startScript()
-    StopButton.Text = "🛑 STOP SCRIPT"
-    StopGradient.Color = ColorSequence.new({
-      ColorSequenceKeypoint.new(0, Color3.fromRGB(200, 50, 50)),
-      ColorSequenceKeypoint.new(1, Color3.fromRGB(140, 20, 20))
-    })
-    StopStroke.Color = Color3.fromRGB(255, 100, 100)
-  end
-end)
-
-CloseButton.MouseButton1Click:Connect(function()
-  MainFrame.Visible = false
-end)
-
 -- Cleanup on Character removal
 Player.CharacterRemoving:Connect(function()
   IsFarming = false
@@ -1338,11 +989,6 @@ Notify("🆔 PlaceId: " .. tostring(CurrentPlaceId), "info")
 Notify("⚡ Speed: " .. tostring(getgenv().TweenSpeed) .. " studs/sec", "info")
 Notify("🔄 Store Retries: " .. tostring(getgenv().StoreRetries), "info")
 Notify("👁️ ESP: " .. (getgenv().FruitESP and "ON" or "OFF"), "info")
-if getgenv().DiscordWebhook and getgenv().DiscordWebhook ~= "" then
-  Notify("💬 Discord Webhook: Enabled", "info")
-else
-  Notify("💬 Discord Webhook: Disabled", "info")
-end
 Notify("──────────────────────────────", "info")
 task.wait(0.5)
 
