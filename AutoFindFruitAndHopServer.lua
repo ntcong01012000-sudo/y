@@ -375,6 +375,63 @@ CloseButton.MouseLeave:Connect(function()
   TweenService:Create(CloseStroke, TweenInfo.new(0.2), {Transparency = 0.5}):Play()
 end)
 
+-- Toggle Button (Icon)
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 45, 0, 45)
+ToggleButton.Position = UDim2.new(0, 15, 0, 335)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+ToggleButton.BackgroundTransparency = 1
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Text = "🍎"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 20
+ToggleButton.TextTransparency = 1
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Parent = ScreenGui
+
+local ToggleCorner = Instance.new("UICorner", ToggleButton)
+ToggleCorner.CornerRadius = UDim.new(0, 22.5)
+
+local ToggleStroke = Instance.new("UIStroke", ToggleButton)
+ToggleStroke.Color = Color3.fromRGB(100, 50, 255)
+ToggleStroke.Thickness = 1.5
+ToggleStroke.Transparency = 0.3
+
+-- Toggle frame visibility
+ToggleButton.MouseButton1Click:Connect(function()
+  MainFrame.Visible = not MainFrame.Visible
+end)
+
+-- Dragging code for ToggleButton
+local dragToggle, dragToggleInput, dragToggleStart, startTogglePos
+ToggleButton.InputBegan:Connect(function(input)
+  if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    dragToggle = true
+    dragToggleStart = input.Position
+    startTogglePos = ToggleButton.Position
+    
+    input.Changed:Connect(function()
+      if input.UserInputState == Enum.UserInputState.End then
+        dragToggle = false
+      end
+    end)
+  end
+end)
+
+ToggleButton.InputChanged:Connect(function(input)
+  if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+    dragToggleInput = input
+  end
+end)
+
+game:GetService("UserInputService").InputChanged:Connect(function(input)
+  if input == dragToggleInput and dragToggle then
+    local delta = input.Position - dragToggleStart
+    ToggleButton.Position = UDim2.new(startTogglePos.X.Scale, startTogglePos.X.Offset + delta.X, startTogglePos.Y.Scale, startTogglePos.Y.Offset + delta.Y)
+  end
+end)
+
 -- Intro fade-in animation
 MainFrame.BackgroundTransparency = 1
 TitleBar.BackgroundTransparency = 1
@@ -394,7 +451,9 @@ task.spawn(function()
   local fadeLog = TweenService:Create(LogFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.3})
   local fadeBtn1 = TweenService:Create(StopButton, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0})
   local fadeBtn2 = TweenService:Create(CloseButton, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0})
-  fadeIn:Play() fadeTitle:Play() fadeTitleFix:Play() fadeTitleText:Play() fadeStatus:Play() fadeLog:Play() fadeBtn1:Play() fadeBtn2:Play()
+  local fadeToggle = TweenService:Create(ToggleButton, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.15, TextTransparency = 0})
+  
+  fadeIn:Play() fadeTitle:Play() fadeTitleFix:Play() fadeTitleText:Play() fadeStatus:Play() fadeLog:Play() fadeBtn1:Play() fadeBtn2:Play() fadeToggle:Play()
 end)
 
 -- ═══════════════════════════════════════════════════════════════
@@ -578,43 +637,97 @@ end)
 -- ═══════════════════════════════════════════════════════════════
 -- TWEEN / FLY TO POSITION
 -- ═══════════════════════════════════════════════════════════════
-local function TweenToPosition(targetCFrame)
-  local plrPP = Player.Character and (Player.Character:FindFirstChild("HumanoidRootPart") or Player.Character.PrimaryPart)
-  if not plrPP then return end
-  
-  -- Đồng bộ vị trí block vào người chơi trước khi bay để đảm bảo tween mượt mà và không bị lệch
-  block.CFrame = plrPP.CFrame
-  
+local function TweenToPosition(targetCFrame, targetFruit)
   local targetPos = targetCFrame.Position or targetCFrame.p
-  local distance = (plrPP.Position - targetPos).Magnitude
-  local speed = getgenv().TweenSpeed or 300
-  local tweenTime = distance / speed
-  if tweenTime < 0.1 then tweenTime = 0.1 end
+  local reachedTarget = false
   
-  activeTween = TweenService:Create(
-    block,
-    TweenInfo.new(tweenTime, Enum.EasingStyle.Linear),
-    {CFrame = targetCFrame}
-  )
-  activeTween:Play()
-  
-  -- Check periodically to allow instant cancellations
-  local completed = false
-  local connection
-  connection = activeTween.Completed:Connect(function()
-    completed = true
-  end)
-
-  while not completed and getgenv().AutoFruitSniper and uiExists do
-    task.wait(0.05)
-  end
-
-  if connection then
-    connection:Disconnect()
-  end
-
-  if (not getgenv().AutoFruitSniper or not uiExists) and activeTween then
-    activeTween:Cancel()
+  while getgenv().AutoFruitSniper and uiExists do
+    local plrChar = Player.Character
+    local plrPP = plrChar and (plrChar:FindFirstChild("HumanoidRootPart") or plrChar.PrimaryPart)
+    if not plrPP then 
+      task.wait(0.5)
+      continue 
+    end
+    
+    local distance = (plrPP.Position - targetPos).Magnitude
+    if distance <= 3 then
+      reachedTarget = true
+      break
+    end
+    
+    -- Sync block CFrame
+    if (block.Position - plrPP.Position).Magnitude > 200 then
+      block.CFrame = plrPP.CFrame
+    end
+    
+    local speed = getgenv().TweenSpeed or 300
+    local tweenTime = distance / speed
+    if tweenTime < 0.1 then tweenTime = 0.1 end
+    
+    activeTween = TweenService:Create(
+      block,
+      TweenInfo.new(tweenTime, Enum.EasingStyle.Linear),
+      {CFrame = targetCFrame}
+    )
+    activeTween:Play()
+    
+    local completed = false
+    local connection
+    connection = activeTween.Completed:Connect(function(state)
+      if state == Enum.PlaybackState.Completed then
+        reachedTarget = true
+      end
+      completed = true
+    end)
+    
+    local lastPos = plrPP.Position
+    local stuckTicks = 0
+    local lastCheck = tick()
+    
+    while not completed and getgenv().AutoFruitSniper and uiExists do
+      if not FruitFind() or (targetFruit and (not targetFruit.Parent or targetFruit.Parent ~= workspace)) then
+        if activeTween then activeTween:Cancel() end
+        if connection then connection:Disconnect() end
+        return
+      end
+      
+      if activeTween and activeTween.PlaybackState ~= Enum.PlaybackState.Playing then
+        break
+      end
+      
+      if tick() - lastCheck >= 1 then
+        local currentPos = plrPP.Position
+        local distMoved = (currentPos - lastPos).Magnitude
+        if distMoved < 5 then
+          stuckTicks = stuckTicks + 1
+          if stuckTicks >= 2 then
+            Notify("⚠️ Stuck detected! Restarting flight tween...", "warn")
+            break
+          end
+        else
+          stuckTicks = 0
+        end
+        lastPos = currentPos
+        lastCheck = tick()
+      end
+      
+      task.wait(0.1)
+    end
+    
+    if connection then
+      connection:Disconnect()
+    end
+    
+    if activeTween then
+      activeTween:Cancel()
+      activeTween = nil
+    end
+    
+    if reachedTarget then
+      break
+    end
+    
+    task.wait(0.1)
   end
   
   activeTween = nil
@@ -1019,15 +1132,29 @@ local function runMainLoop()
       Notify("✈️ Flying to " .. fruit.Name .. "...", "action", true)
 
       local aboveFruit = CFrame.new(fruitHandle.Position + Vector3.new(0, 5, 0))
-      TweenToPosition(aboveFruit)
+      TweenToPosition(aboveFruit, fruit)
       
       if not getgenv().AutoFruitSniper or not uiExists then return end
+      if not FruitFind() or not fruit or not fruit.Parent or fruit.Parent ~= workspace then
+        Notify("⚠️ Fruit disappeared during flight. Hopping...", "warn", true)
+        IsFarming = false
+        task.wait(1)
+        ServerHop()
+        break
+      end
       task.wait(0.3)
       
       Notify("📍 Approaching fruit...", "action")
-      TweenToPosition(fruitHandle.CFrame)
+      TweenToPosition(fruitHandle.CFrame, fruit)
       
       if not getgenv().AutoFruitSniper or not uiExists then return end
+      if not FruitFind() or not fruit or not fruit.Parent or fruit.Parent ~= workspace then
+        Notify("⚠️ Fruit disappeared during approach. Hopping...", "warn", true)
+        IsFarming = false
+        task.wait(1)
+        ServerHop()
+        break
+      end
       task.wait(0.5)
       Notify("✅ Arrived at fruit!", "success")
 
@@ -1176,7 +1303,7 @@ StopButton.MouseButton1Click:Connect(function()
 end)
 
 CloseButton.MouseButton1Click:Connect(function()
-  closeUI()
+  MainFrame.Visible = false
 end)
 
 -- Cleanup on Character removal
