@@ -1,11 +1,11 @@
 --[[
-    Blox Fruits - Auto Farm Premium (Dưới Quái & Bay Đến Cổng 1-3)
+    Blox Fruits - Auto Farm Premium (Dưới/Trên Quái & Bay Đến Cổng 1-3)
     Được viết bởi: Antigravity AI
     Mô tả:
         1. Tự động kiểm tra và HỦY/ĐÓNG toàn bộ luồng hoạt động, sự kiện kết nối,
            vật thể phụ trợ, và UI của tất cả các script cũ chạy trước đó.
         2. Tab 1 (Farm):
-           - Vị trí farm luôn ở DƯỚI QUÁI 50 studs (CFrame * CFrame.new(0, -50, 0)), kết hợp Noclip xuyên lòng đất.
+           - Hỗ trợ nút chọn Vị trí Farm trên UI (Đứng Trên Đầu quái 20 studs hoặc Đứng Bên Dưới quái 50 studs).
            - Khoảng cách <= 500 studs: Dịch chuyển tức thời (TP) không có delay.
              Khoảng cách > 500 studs: Bay mượt tốc độ 300 studs/s.
            - Ưu tiên quái có MÁU ÍT nhất. Đang đánh con nào thì tập trung tiêu diệt xong mới đổi mục tiêu.
@@ -15,7 +15,7 @@
         3. Tab 2 (Portals):
            - Cho phép bay đến các Cổng từ 1 đến 3 với các tọa độ chính xác.
         4. Tối ưu hiệu năng UI: Sử dụng cơ chế Pool để tái sử dụng Gui Object,
-           loại bỏ hoàn toàn hiện tượng tạo mới/hủy liên tục gây giật lag FPS (UI Lag).
+           loại bỏ hoàn toàn hiện tượng tạo mới/hủy liên tục gây giật lag FPS.
 --]]
 
 -- ==================== HỆ THỐNG ĐÓNG/HỦY SCRIPT CŨ ====================
@@ -78,7 +78,8 @@ local Config = {
     PrioritizeLowestHealth = true,
     Speed = 300,
     Range = 1000,
-    ExcludeName = "shadow"
+    ExcludeName = "shadow",
+    FarmPosition = "Below" -- Hỗ trợ "Below" (Dưới) hoặc "Above" (Trên)
 }
 
 local UPDATE_INTERVAL = 0.1
@@ -413,7 +414,7 @@ local function makeDraggable(frame, handle)
     end)
 end
 
--- ==================== THIẾT KẾ UI GIAO DIỆN (SMOOTH GLASS) ====================
+-- ==================== THIẾT KẾ UI GIAO DIỆN ====================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AntigravityV2UI"
 ScreenGui.ResetOnSpawn = false
@@ -545,10 +546,24 @@ local HPFilterCorner = Instance.new("UICorner")
 HPFilterCorner.CornerRadius = UDim.new(0, 5)
 HPFilterCorner.Parent = HPFilterBtn
 
+-- Nút Lựa Chọn Vị Trí Farm (Trên đầu / Dưới chân)
+local PositionBtn = Instance.new("TextButton")
+PositionBtn.Size = UDim2.new(0.88, 0, 0, 28)
+PositionBtn.Position = UDim2.new(0.06, 0, 0.20, 0)
+PositionBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+PositionBtn.Text = "VỊ TRÍ FARM: BÊN DƯỚI (-50)"
+PositionBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
+PositionBtn.TextSize = 10
+PositionBtn.Font = Enum.Font.SourceSansBold
+PositionBtn.Parent = FarmPage
+local PositionCorner = Instance.new("UICorner")
+PositionCorner.CornerRadius = UDim.new(0, 5)
+PositionCorner.Parent = PositionBtn
+
 -- Danh sách quái vật xung quanh
 local MonsterListLabel = Instance.new("TextLabel")
 MonsterListLabel.Size = UDim2.new(0.88, 0, 0, 15)
-MonsterListLabel.Position = UDim2.new(0.06, 0, 0.25, 0)
+MonsterListLabel.Position = UDim2.new(0.06, 0, 0.36, 0)
 MonsterListLabel.BackgroundTransparency = 1
 MonsterListLabel.Text = "Quái vật trong phạm vi hoạt động:"
 MonsterListLabel.TextColor3 = Color3.fromRGB(160, 160, 170)
@@ -558,8 +573,8 @@ MonsterListLabel.TextXAlignment = Enum.TextXAlignment.Left
 MonsterListLabel.Parent = FarmPage
 
 local MonsterScroll = Instance.new("ScrollingFrame")
-MonsterScroll.Size = UDim2.new(0.88, 0, 0.54, 0)
-MonsterScroll.Position = UDim2.new(0.06, 0, 0.35, 0)
+MonsterScroll.Size = UDim2.new(0.88, 0, 0.48, 0)
+MonsterScroll.Position = UDim2.new(0.06, 0, 0.44, 0)
 MonsterScroll.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 MonsterScroll.BackgroundTransparency = 0.5
 MonsterScroll.ScrollBarThickness = 3
@@ -574,8 +589,7 @@ MonsterScrollCorner.Parent = MonsterScroll
 local MonsterLayout = Instance.new("UIListLayout", MonsterScroll)
 MonsterLayout.Padding = UDim.new(0, 3)
 
--- ==================== KHỞI TẠO POOL OBJECTS CHO LIST QUÁI VẬT (TỐI ƯU CỰC MẠNH) ====================
--- Tạo sẵn 15 Row tĩnh để hiển thị thông tin quái, tránh việc Destroy/Instance.new liên tục gây sụt FPS
+-- Khởi tạo Pool Objects hiển thị quái vật
 local RowPool = {}
 for i = 1, 15 do
     local row = Instance.new("TextLabel")
@@ -655,6 +669,16 @@ local function updateUI()
         HPFilterBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
         HPFilterBtn.Text = "ƯU TIÊN MÁU ÍT: TẮT"
     end
+    
+    if Config.FarmPosition == "Below" then
+        PositionBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+        PositionBtn.Text = "VỊ TRÍ FARM: BÊN DƯỚI (-50)"
+        PositionBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
+    else
+        PositionBtn.BackgroundColor3 = Color3.fromRGB(80, 30, 80)
+        PositionBtn.Text = "VỊ TRÍ FARM: TRÊN ĐẦU (+20)"
+        PositionBtn.TextColor3 = Color3.fromRGB(255, 150, 255)
+    end
 end
 
 -- Tải/Thu phóng Menu thông qua floating button
@@ -697,9 +721,19 @@ HPFilterBtn.MouseButton1Click:Connect(function()
     updateUI()
 end)
 
+-- Xử lý nút chọn Vị trí Farm
+PositionBtn.MouseButton1Click:Connect(function()
+    if Config.FarmPosition == "Below" then
+        Config.FarmPosition = "Above"
+    else
+        Config.FarmPosition = "Below"
+    end
+    updateUI()
+end)
+
 updateUI()
 
--- ==================== VÒNG LẶP CẬP NHẬT GIAO DIỆN QUÁI VẬT (TỐI ƯU HÓA) ====================
+-- ==================== VÒNG LẶP CẬP NHẬT GIAO DIỆN QUÁI VẬT ====================
 task.spawn(function()
     while scriptID == _G.AntigravityV2ID do
         task.wait(0.5)
@@ -709,8 +743,6 @@ task.spawn(function()
             if hrp then
                 if FarmPage.Visible then
                     local targets = getTargets(hrp)
-                    
-                    -- Cập nhật chữ tĩnh thay vì tạo mới/hủy liên tục
                     for i = 1, 15 do
                         local row = RowPool[i]
                         local enemy = targets[i]
@@ -731,7 +763,6 @@ task.spawn(function()
                         end
                     end
                 else
-                    -- Ẩn hết danh sách quái khi đổi qua tab Cổng để tiết kiệm tài nguyên
                     for i = 1, 15 do
                         RowPool[i].Visible = false
                     end
@@ -750,9 +781,9 @@ task.spawn(function()
         if Config.Running then
             pcall(function()
                 local character = LocalPlayer.Character
-                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                local humanoid = character and character:FindFirstChild("HumanoidRootPart")
                 
-                if character and humanoid and humanoid.Health > 0 then
+                if character and humanoid then
                     -- 1. Tự động kiểm tra và bật Haki Vũ Trang (Buso)
                     if not character:FindFirstChild("HasBuso") then
                         local CommF = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("CommF_")
@@ -802,8 +833,15 @@ task.spawn(function()
                     end
                     
                     if currentTarget then
-                        -- Vị trí luôn là BÊN DƯỚI QUÁI 50 studs
-                        local targetCFrame = currentTarget.HumanoidRootPart.CFrame * CFrame.new(0, -50, 0)
+                        -- Xác định CFrame đứng dựa trên lựa chọn của người dùng
+                        local targetCFrame
+                        if Config.FarmPosition == "Above" then
+                            -- Đứng trên đầu quái 20 studs
+                            targetCFrame = currentTarget.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0)
+                        else
+                            -- Đứng dưới chân quái 50 studs
+                            targetCFrame = currentTarget.HumanoidRootPart.CFrame * CFrame.new(0, -50, 0)
+                        end
                         
                         -- Bay hoặc dịch chuyển đến
                         flyOrTp(hrp, targetCFrame)
