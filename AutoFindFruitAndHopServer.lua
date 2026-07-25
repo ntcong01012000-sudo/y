@@ -936,131 +936,132 @@ print("[FruitSniper] 🌊 Detected: " .. CurrentSea .. " (PlaceId: " .. CurrentP
 -- HIGH PLAYER SERVER HOP (CHỌN SERVER NHIỀU NGƯỜI NHẤT MÀ KHÔNG FULL)
 -- ═══════════════════════════════════════════════════════════════
 local function ServerHop()
-  Notify("🔄 Searching for high-player servers (sort=Desc)...", "hop", true)
+  while getgenv().AutoFruitSniper and uiExists do
+    Notify("🔄 Searching for high-player servers (sort=Desc)...", "hop", true)
 
-  pcall(function()
-    local queueteleport = (syn and syn.queue_on_teleport)
-      or queue_on_teleport
-      or (fluxus and fluxus.queue_on_teleport)
-    if queueteleport then
-      queueteleport('loadstring(readfile("BloxFruit_AutoFruit.lua"))()')
-      Notify("📋 Script queued for next server", "info")
-    end
-  end)
-
-  -- Use sortOrder=Desc & excludeFullGames=true to fetch populated servers first
-  local apiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100"
-
-  local function ListServers(cursor)
-    local success, raw = pcall(function()
-      return game:HttpGet(apiUrl .. ((cursor and "&cursor=" .. cursor) or ""))
-    end)
-    if success and raw then
-      return HttpService:JSONDecode(raw)
-    end
-    return nil
-  end
-
-  local Server = nil
-  local Next = nil
-  local pageAttempts = 0
-  local maxPages = 5
-
-  pcall(function()
-    repeat
-      if not getgenv().AutoFruitSniper or not uiExists then return end
-      local Servers = ListServers(Next)
-      pageAttempts = pageAttempts + 1
-
-      if Servers and Servers.data then
-        local candidates = {}
-        for _, server in pairs(Servers.data) do
-          local playing = tonumber(server.playing)
-          local maxPlayers = tonumber(server.maxPlayers)
-          if server.id ~= game.JobId and playing and maxPlayers 
-             and playing < maxPlayers 
-             and playing >= 1 then
-            table.insert(candidates, server)
-          end
-        end
-
-        if #candidates > 0 then
-          table.sort(candidates, function(a, b)
-            return a.playing > b.playing
-          end)
-          Server = candidates[1]
-          break
-        end
-
-        Next = Servers.nextPageCursor
-      else
-        break
+    pcall(function()
+      local queueteleport = (syn and syn.queue_on_teleport)
+        or queue_on_teleport
+        or (fluxus and fluxus.queue_on_teleport)
+      if queueteleport then
+        queueteleport('loadstring(readfile("BloxFruit_AutoFruit.lua"))()')
+        Notify("📋 Script queued for next server", "info")
       end
-      task.wait(0.25)
-    until Server or not Next or pageAttempts >= maxPages
-  end)
+    end)
 
-  if not Server then
-    Notify("⚠️ Descending search empty. Retrying fallback search...", "warn")
-    local ascApiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-    pageAttempts = 0
+    -- Use sortOrder=Desc & excludeFullGames=true to fetch populated servers first
+    local apiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100"
+
+    local function ListServers(cursor)
+      local success, raw = pcall(function()
+        return game:HttpGet(apiUrl .. ((cursor and "&cursor=" .. cursor) or ""))
+      end)
+      if success and raw then
+        return HttpService:JSONDecode(raw)
+      end
+      return nil
+    end
+
+    local Server = nil
+    local Next = nil
+    local pageAttempts = 0
+    local maxPages = 5
+
     pcall(function()
       repeat
         if not getgenv().AutoFruitSniper or not uiExists then return end
-        local raw = game:HttpGet(ascApiUrl .. ((Next and "&cursor=" .. Next) or ""))
-        local Servers = HttpService:JSONDecode(raw)
+        local Servers = ListServers(Next)
         pageAttempts = pageAttempts + 1
+
         if Servers and Servers.data then
           local candidates = {}
           for _, server in pairs(Servers.data) do
-            if server.id ~= game.JobId and server.playing and server.maxPlayers 
-               and server.playing < server.maxPlayers then
+            local playing = tonumber(server.playing)
+            local maxPlayers = tonumber(server.maxPlayers)
+            if server.id ~= game.JobId and playing and maxPlayers 
+               and playing < maxPlayers 
+               and playing >= 1 then
               table.insert(candidates, server)
             end
           end
+
           if #candidates > 0 then
-            table.sort(candidates, function(a, b) return a.playing > b.playing end)
+            table.sort(candidates, function(a, b)
+              return a.playing > b.playing
+            end)
             Server = candidates[1]
             break
           end
+
           Next = Servers.nextPageCursor
+        else
+          break
         end
         task.wait(0.25)
       until Server or not Next or pageAttempts >= maxPages
     end)
-  end
 
-  if not getgenv().AutoFruitSniper or not uiExists then return end
-
-  if Server then
-    Notify("🌐 Found server: " .. Server.playing .. "/" .. Server.maxPlayers .. " players", "success")
-    Notify("✈️ Teleporting via __ServerBrowser...", "success", true)
-
-    local teleportSuccess, teleportErr = pcall(function()
-      return game:GetService("ReplicatedStorage"):WaitForChild("__ServerBrowser"):InvokeServer("teleport", Server.id)
-    end)
-
-    if not teleportSuccess then
-      Notify("⚠️ Native hop failed: " .. tostring(teleportErr), "error", true)
-      Notify("🔄 Using fallback Teleport...", "warn")
-      task.wait(2)
+    if not Server then
+      Notify("⚠️ Descending search empty. Retrying fallback search...", "warn")
+      local ascApiUrl = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+      pageAttempts = 0
       pcall(function()
-        TeleportService:TeleportToPlaceInstance(CurrentPlaceId, Server.id, Player)
+        repeat
+          if not getgenv().AutoFruitSniper or not uiExists then return end
+          local raw = game:HttpGet(ascApiUrl .. ((Next and "&cursor=" .. Next) or ""))
+          local Servers = HttpService:JSONDecode(raw)
+          pageAttempts = pageAttempts + 1
+          if Servers and Servers.data then
+            local candidates = {}
+            for _, server in pairs(Servers.data) do
+              if server.id ~= game.JobId and server.playing and server.maxPlayers 
+                 and server.playing < server.maxPlayers then
+                table.insert(candidates, server)
+              end
+            end
+            if #candidates > 0 then
+              table.sort(candidates, function(a, b) return a.playing > b.playing end)
+              Server = candidates[1]
+              break
+            end
+            Next = Servers.nextPageCursor
+          end
+          task.wait(0.25)
+        until Server or not Next or pageAttempts >= maxPages
       end)
-      task.wait(5)
-    else
-      task.wait(15)
-      Notify("⚠️ Still here? Retrying hop...", "warn", true)
     end
-  else
-    Notify("⚠️ Failed to find valid server.", "error", true)
-    Notify("🔄 Using random Teleport fallback...", "warn")
 
-    pcall(function()
-      TeleportService:Teleport(CurrentPlaceId, Player)
-    end)
+    if not getgenv().AutoFruitSniper or not uiExists then return end
 
-    task.wait(15)
+    if Server then
+      Notify("🌐 Found server: " .. Server.playing .. "/" .. Server.maxPlayers .. " players", "success")
+      Notify("✈️ Teleporting via __ServerBrowser...", "success", true)
+
+      local teleportSuccess, teleportErr = pcall(function()
+        return game:GetService("ReplicatedStorage"):WaitForChild("__ServerBrowser"):InvokeServer("teleport", Server.id)
+      end)
+
+      if not teleportSuccess then
+        Notify("⚠️ Native hop failed: " .. tostring(teleportErr), "error", true)
+        Notify("🔄 Using fallback Teleport...", "warn")
+        task.wait(2)
+        pcall(function()
+          TeleportService:TeleportToPlaceInstance(CurrentPlaceId, Server.id, Player)
+        end)
+        task.wait(8)
+      else
+        task.wait(8)
+        Notify("⚠️ Still here? Retrying hop...", "warn", true)
+      end
+    else
+      Notify("⚠️ Failed to find valid server. Retrying fallback random Teleport...", "warn", true)
+      pcall(function()
+        TeleportService:Teleport(CurrentPlaceId, Player)
+      end)
+      task.wait(8)
+    end
+
+    task.wait(2)
   end
 end
 
