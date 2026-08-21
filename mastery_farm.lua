@@ -1408,6 +1408,29 @@ local function isToolFullyEquipped(weaponType)
     return false
 end
 
+-- Kiểm tra tuyệt đối vũ khí trên tay có phải là Fruit/Gun hay không (Chặn hoàn toàn Melee/Sword)
+local function isHoldingMasteryWeapon()
+    local char = getPlayerCharacter(LocalPlayer)
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    if not tool then return false end
+    
+    local tooltip = (tool.ToolTip or ""):lower()
+    local name = (tool.Name or ""):lower()
+    local masteryType = (getgenv().MasteryConfig.MasteryWeapon or ""):lower()
+    
+    -- Nếu là Melee hoặc Sword thì tuyệt đối trả về false
+    if tooltip == "melee" or tooltip == "sword" or name == "melee" or name == "sword" or name == "combat" then
+        return false
+    end
+    
+    if masteryType == "fruit" then
+        return tooltip == "blox fruit" or string.find(name, "fruit") or string.find(tooltip, "fruit")
+    elseif masteryType == "gun" then
+        return tooltip == "gun" or string.find(name, "gun") or string.find(tooltip, "gun")
+    end
+    return false
+end
+
 -- 8. UNLOCKED SKILL VERIFICATION SYSTEM
 local function isSkillUnlocked(keyName)
     local main = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Main")
@@ -1787,35 +1810,40 @@ task.spawn(function()
                                     -- GIAI ĐOẠN 2: ĐỦ ĐIỀU KIỆN -> CHUYỂN SANG FRUIT/GUN VÀ SPAM LIÊN TỤC SKILL
                                     -- =========================================================================
                                     
-                                    -- 1. SPAM TẤT CẢ CÁC CHIÊU THỨC (Z, X, C, V, F đối với Fruit / Z, X đối với Gun)
-                                    local skillSpamDelay = 0.04 -- Tốc độ spam chiêu thức siêu nhanh
-                                    if now - lastSkillTime >= skillSpamDelay then
-                                        lastSkillTime = now
-                                        local allowedKeys = {}
-                                        if activeWeaponType == "Fruit" then
-                                            allowedKeys = {"Z", "X", "C", "V", "F"}
-                                        elseif activeWeaponType == "Gun" then
-                                            allowedKeys = {"Z", "X"}
-                                        end
-                                        
-                                        task.spawn(function()
+                                    -- CHẶN TUYỆT ĐỐI: CHỈ SPAM SKILL KHI VŨ KHÍ TRÊN TAY THỰC SỰ LÀ FRUIT HOẶC GUN (KHÔNG PHẢI MELEE/SWORD)
+                                    if isHoldingMasteryWeapon() then
+                                        -- 1. SPAM TẤT CẢ CÁC CHIÊU THỨC (Z, X, C, V, F đối với Fruit / Z, X đối với Gun)
+                                        local skillSpamDelay = 0.05 -- Tốc độ spam chiêu thức
+                                        if now - lastSkillTime >= skillSpamDelay then
+                                            lastSkillTime = now
+                                            local allowedKeys = {}
+                                            if activeWeaponType == "Fruit" then
+                                                allowedKeys = {"Z", "X", "C", "V", "F"}
+                                            elseif activeWeaponType == "Gun" then
+                                                allowedKeys = {"Z", "X"}
+                                            end
+                                            
                                             local VirtualInput = game:GetService("VirtualInputManager")
                                             for _, key in ipairs(allowedKeys) do
+                                                -- Kiểm tra lại từng phím: nếu đã bị chuyển về Melee/Sword hoặc quái đã chết -> DỪNG NGAY
+                                                if not isHoldingMasteryWeapon() then break end
+                                                if not monster or not monster.Parent then break end
+                                                local currentHum = monster:FindFirstChildOfClass("Humanoid")
+                                                if not currentHum or currentHum.Health <= 0 then break end
+                                                
                                                 if getgenv().MasteryConfig.Skills[key] and isSkillUnlocked(key) then
                                                     VirtualInput:SendKeyEvent(true, key, false, game)
                                                     task.wait(0.01)
                                                     VirtualInput:SendKeyEvent(false, key, false, game)
                                                 end
                                             end
-                                        end)
-                                    end
-                                    
-                                    -- 2. CLICK TẤN CÔNG BẰNG FRUIT / GUN (CLICK BẮN ĐẠN / ĐÁNH THƯỜNG TRÁI)
-                                    local clickInterval = getgenv().MasteryConfig.FruitGunClickInterval or 0.15
-                                    if getgenv().MasteryConfig.Skills.Click and (now - lastClickTime >= clickInterval) then
-                                        lastClickTime = now
-                                        task.spawn(function()
-                                            if camera then
+                                        end
+                                        
+                                        -- 2. CLICK TẤN CÔNG BẰNG FRUIT / GUN (CLICK BẮN ĐẠN / ĐÁNH THƯỜNG TRÁI)
+                                        local clickInterval = getgenv().MasteryConfig.FruitGunClickInterval or 0.15
+                                        if getgenv().MasteryConfig.Skills.Click and (now - lastClickTime >= clickInterval) then
+                                            lastClickTime = now
+                                            if camera and isHoldingMasteryWeapon() then
                                                 local monsterPart = monster:FindFirstChild("Head") or monster:FindFirstChild("HumanoidRootPart") or mRoot
                                                 if monsterPart then
                                                     local screenPos, onScreen = camera:WorldToViewportPoint(monsterPart.Position)
@@ -1829,10 +1857,10 @@ task.spawn(function()
                                                 end
                                             end
                                             local activeTool = myChar:FindFirstChildOfClass("Tool")
-                                            if activeTool then
+                                            if activeTool and isHoldingMasteryWeapon() then
                                                 pcall(function() activeTool:Activate() end)
                                             end
-                                        end)
+                                        end
                                     end
                                 end
                             end
