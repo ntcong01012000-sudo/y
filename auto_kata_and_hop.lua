@@ -1,19 +1,21 @@
 --[[
     ========================================================================================
-    🍩 BLOX FRUITS - KATAKURI ULTRA FARM PRO (AUTO MELEE, AUTO RACE V3/V4, ANTI-JITTER) 🍩
+    🍩 BLOX FRUITS - KATAKURI ULTRA FARM & SMART SERVER HOPPER (PRO EDITION) 🍩
     ========================================================================================
-    ✨ TÍNH NĂNG TOÀN DIỆN:
-      1. Tự Động Bật Tộc V4 (Awakening - Phím Y + Remote) & Tộc V3 (Ability - Phím T + Remote).
-      2. Tự Động Trang Bị Melee (Cận chiến) liên tục trong suốt quá trình farm.
-      3. Triệt Tiêu Trọng Lực 100% bằng BodyVelocity (9e9) - Đứng im lơ lửng không bị rơi/lag giật.
-      4. Khoảng cách an toàn 15 studs trên đầu quái (Quái không thể đánh trúng người chơi).
-      5. Gom Quái Magnet 60x60 (SimulationRadius huge + ChangeState 11, 14 - Không bị đơ quái).
-      6. Đánh Siêu Nhanh x4 (100 CPS Multi Burst + Bypass Cooldown CombatFramework).
-      7. Tự Động Nhận Nhiệm Vụ (Auto Quest Beli & EXP).
-      8. Tự Động Chọn Phe Hải Tặc (Auto Set Team Pirates).
-      9. Tự Động Lưu & Tải Cài Đặt theo tên người dùng (Persistent User Config).
-      10. Dashboard Katakuri chi tiết (/500 quái, % tiến độ, Máu Boss, Trạng thái Cổng Gương).
-      11. GUI Hiện Đại với Icon Trôi Nổi (Floating Icon 🍩) hỗ trợ PC & Mobile.
+    ✨ TÍNH NĂNG ĐỘT PHÁ:
+      1. Tự Động Check Server Khi Vào:
+         - Nếu server còn phải đánh hơn 200 con quái (tức là chưa đánh đủ 300 con) -> Tự đổi sang server khác qua Server Browser.
+         - Nếu server đã đánh được ít nhất 300/500 con (hoặc đã mở Cổng / đã có Boss) -> Ở lại server và kích hoạt Auto Farm Katakuri!
+      2. Tự Động Đổi Server Sau Khi Diệt Boss: Sau khi đánh chết Katakuri -> Tự động chuyển ngay sang server ngẫu nhiên mới chưa từng vào.
+      3. Server Browser Random Hop: Lấy danh sách server thường từ API Roblox, lưu cache tránh lặp lại server cũ, chọn ngẫu nhiên 1 server còn chỗ.
+      4. Tự Động Trang Bị Melee (Cận chiến) liên tục trong suốt trận đánh.
+      5. Tự Động Bật Tộc V4 (Awakening - Phím Y) & Tộc V3 (Ability - Phím T) & Haki (Buso, Ken).
+      6. Triệt tiêu 100% trọng lực bằng BodyVelocity (9e9) - Lơ lửng 15 studs không bị rơi/giật và quái không thể đánh trúng.
+      7. Gom Quái Magnet 60x60 (SimulationRadius huge + ChangeState 11, 14 - Không bị đơ quái).
+      8. Đánh Siêu Nhanh x4 (100 CPS Multi Burst + Bypass Cooldown CombatFramework).
+      9. Tự Động Nhận Nhiệm Vụ (Auto Quest Beli & EXP).
+      10. Tự Động Chọn Phe Hải Tặc (Auto Set Team Pirates) & Lưu/Tải Cấu Hình theo tên người dùng.
+      11. Dashboard Katakuri chi tiết & GUI Icon trôi nổi (🍩) kéo thả tiện lợi trên PC/Mobile.
     ========================================================================================
 --]]
 
@@ -26,6 +28,7 @@ local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
 local UIS = game:GetService("UserInputService")
 local VIM = game:GetService("VirtualInputManager")
 local VU = game:GetService("VirtualUser")
@@ -54,9 +57,14 @@ end)
 -- ==================== CẤU HÌNH & TỰ LƯU / NẠP THEO USER ====================
 local userName = LP.Name
 local saveFile = "BloxFruits_Katakuri_" .. userName .. ".json"
+local visitedFile = "visited_katakuri_servers.json"
 
 local Config = {
     AutoFarm = false,
+    AutoHopKatakuriServer = true,  -- Tự đổi server nếu server chưa đánh đủ quái
+    MinKilledToStay = 300,         -- Đã đánh ít nhất 300 con (còn lại <= 200 con) thì mới ở lại
+    AutoHopAfterKillBoss = true,   -- Tự đổi server sau khi diệt xong Katakuri
+    
     AutoBring = true,
     BringRadius = 300,
     FastAttack = true,
@@ -64,13 +72,13 @@ local Config = {
     AutoQuest = true,
     AutoSpawnBoss = true,
     AutoKillBossOnly = false,
-    WeaponType = "Melee", -- Mặc định luôn tự động cầm Melee
+    WeaponType = "Melee",          -- Mặc định luôn tự động cầm Melee
     AutoBuso = true,
     AutoKen = true,
     AutoRaceV3 = true,
     AutoRaceV4 = true,
     FlySpeed = 250,
-    FarmDistance = 15,    -- 15 studs trên đầu quái (An toàn tuyệt đối)
+    FarmDistance = 15,             -- 15 studs trên đầu quái (An toàn tuyệt đối)
     NoClip = true
 }
 
@@ -95,6 +103,28 @@ local function loadSettings()
     end)
 end
 loadSettings()
+
+-- ==================== HỆ THỐNG LƯU SERVER ĐÃ VÀO ====================
+local function getVisitedServers()
+    local visited = {}
+    pcall(function()
+        if isfile and isfile(visitedFile) and readfile then
+            local data = HttpService:JSONDecode(readfile(visitedFile))
+            if type(data) == "table" then visited = data end
+        end
+    end)
+    return visited
+end
+
+local function saveVisitedServer(id)
+    pcall(function()
+        local visited = getVisitedServers()
+        visited[id] = os.time()
+        if writefile then writefile(visitedFile, HttpService:JSONEncode(visited)) end
+    end)
+end
+
+pcall(function() saveVisitedServer(game.JobId) end)
 
 -- ==================== REMOTE & CHỌN PHE (SET TEAM) ====================
 local CommF = RS:WaitForChild("Remotes"):WaitForChild("CommF_")
@@ -166,7 +196,6 @@ local function TrangBiVuKhi()
     -- 2. Tìm trong Backpack
     local bp = LP:FindFirstChild("Backpack")
     if bp then
-        -- Ưu tiên tìm đúng loại được chọn
         for _, tool in ipairs(bp:GetChildren()) do
             if tool:IsA("Tool") then
                 if pref == "Melee" and (tool.ToolTip == "Melee" or tool:FindFirstChild("CombatScript") or tool:FindFirstChild("Melee")) then
@@ -178,14 +207,12 @@ local function TrangBiVuKhi()
                 end
             end
         end
-        -- Fallback: Trang bị Melee bất kỳ
         for _, tool in ipairs(bp:GetChildren()) do
             if tool:IsA("Tool") and tool.ToolTip == "Melee" then
                 hum:EquipTool(tool)
                 return tool
             end
         end
-        -- Fallback cuối: Trang bị bất kỳ Tool nào
         for _, tool in ipairs(bp:GetChildren()) do
             if tool:IsA("Tool") then
                 hum:EquipTool(tool)
@@ -197,8 +224,7 @@ local function TrangBiVuKhi()
     return char:FindFirstChildOfClass("Tool")
 end
 
--- ==================== TỰ ĐỘNG BẬT HAKI & TỘC V3 / V4 (CHUẨN PI HUB) ====================
--- Luồng Tự Bật Buso & Ken Haki
+-- ==================== TỰ ĐỘNG BẬT HAKI & TỘC V3 / V4 ====================
 task.spawn(function()
     while scriptID == _G.KatakuriFarmID do
         task.wait(0.5)
@@ -214,7 +240,6 @@ task.spawn(function()
     end
 end)
 
--- Luồng Tự Bật Kỹ Năng Tộc V3 (Ability - Phím T)
 task.spawn(function()
     while scriptID == _G.KatakuriFarmID do
         task.wait(1.0)
@@ -229,7 +254,6 @@ task.spawn(function()
     end
 end)
 
--- Luồng Tự Thức Tỉnh Tộc V4 (Awakening - Phím Y & Nút GUI)
 task.spawn(function()
     while scriptID == _G.KatakuriFarmID do
         task.wait(0.2)
@@ -237,23 +261,15 @@ task.spawn(function()
             pcall(function()
                 local char = LP.Character
                 local isTransformed = char:FindFirstChild("RaceTransformed") and char.RaceTransformed.Value == true
-                
                 if not isTransformed then
-                    -- 1. Nhấn phím Y qua VirtualInputManager
                     VIM:SendKeyEvent(true, Enum.KeyCode.Y, false, game)
                     task.wait(0.05)
                     VIM:SendKeyEvent(false, Enum.KeyCode.Y, false, game)
-                    
-                    -- 2. Gửi Remote Awakening
                     CommE:FireServer("Awakening")
-                    
-                    -- 3. Click nút Awakening trên GUI nếu có
                     local pg = LP:FindFirstChild("PlayerGui")
                     if pg and pg:FindFirstChild("Main") then
                         local awkBtn = pg.Main:FindFirstChild("Awakening") or pg.Main:FindFirstChild("AwakeningToggler")
-                        if awkBtn and awkBtn.Visible then
-                            if firesignal then firesignal(awkBtn.MouseButton1Click) end
-                        end
+                        if awkBtn and awkBtn.Visible and firesignal then firesignal(awkBtn.MouseButton1Click) end
                     end
                 end
             end)
@@ -336,13 +352,139 @@ local function updateKataData()
 end
 
 -- =========================================================================
+-- HỌP SERVER NGẪU NHIÊN QUA SERVER BROWSER (KHÔNG LẶP LẠI SV CŨ)
+-- =========================================================================
+local isHopping = false
+local function hopRandomServer()
+    if isHopping then return end
+    isHopping = true
+    print("[Server Hop] Đang tìm kiếm server thường ngẫu nhiên mới...")
+    
+    local placeId = game.PlaceId
+    local apiUrl = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Desc&limit=100"
+    
+    local function ListServers(cursor)
+        local success, raw = pcall(function() return game:HttpGet(apiUrl .. ((cursor and "&cursor=" .. cursor) or "")) end)
+        return success and HttpService:JSONDecode(raw) or nil
+    end
+    
+    local visited = getVisitedServers()
+    local candidateServers = {}
+    local Next = nil
+    local pagesChecked = 0
+    
+    pcall(function()
+        repeat
+            local res = ListServers(Next)
+            pagesChecked = pagesChecked + 1
+            if res and res.data then
+                for _, s in pairs(res.data) do
+                    local playing = tonumber(s.playing)
+                    local maxP = tonumber(s.maxPlayers) or 12
+                    if s.id ~= game.JobId and not visited[s.id] and playing and playing < maxP and playing >= 2 then
+                        table.insert(candidateServers, s)
+                    end
+                end
+                Next = res.nextPageCursor
+            else
+                break
+            end
+            task.wait(0.2)
+        until #candidateServers >= 15 or not Next or pagesChecked >= 4
+    end)
+    
+    local targetServer = nil
+    if #candidateServers > 0 then
+        targetServer = candidateServers[math.random(1, #candidateServers)]
+    end
+    
+    if targetServer then
+        saveVisitedServer(targetServer.id)
+        print(string.format("[Server Hop] Chuyển đến server: %s (%d/%d người)", targetServer.id, targetServer.playing, targetServer.maxPlayers or 12))
+        
+        pcall(function() RS:WaitForChild("__ServerBrowser", 5):InvokeServer("teleport", targetServer.id) end)
+        task.wait(3)
+        pcall(function() TeleportService:TeleportToPlaceInstance(placeId, targetServer.id, LP) end)
+    else
+        print("[Server Hop] Không tìm thấy server mới, xóa cache và quét lại...")
+        pcall(function()
+            if writefile then writefile(visitedFile, HttpService:JSONEncode({[game.JobId] = os.time()})) end
+        end)
+        task.wait(2)
+        isHopping = false
+        hopRandomServer()
+    end
+end
+
+-- Tự động thử lại khi teleport thất bại
+TeleportService.TeleportInitFailed:Connect(function(player)
+    if player == LP then
+        isHopping = false
+        task.wait(2)
+        hopRandomServer()
+    end
+end)
+
+-- =========================================================================
+-- KIỂM TRA ĐIỀU KIỆN KATAKURI KHI VỪA VÀO SERVER & THEO DÕI SAU KHI DIỆT BOSS
+-- =========================================================================
+task.spawn(function()
+    task.wait(2.5) -- Chờ kết nối remote ổn định
+    
+    if Config.AutoHopKatakuriServer then
+        local checked = false
+        local attempts = 0
+        
+        while not checked and attempts < 10 and scriptID == _G.KatakuriFarmID do
+            attempts = attempts + 1
+            local d = updateKataData()
+            
+            if d.Rem ~= nil or d.Open or d.Boss then
+                checked = true
+                -- Ở lại nếu: Cổng đã mở, Đã có Boss, hoặc Đã diệt >= 300 con (còn lại <= 200 con)
+                local canStay = d.Open or (d.Boss ~= nil) or (d.Killed >= Config.MinKilledToStay) or (d.Rem and d.Rem <= (500 - Config.MinKilledToStay))
+                
+                if canStay then
+                    print(string.format("✅ [Katakuri Check] Server đạt điều kiện (Đã diệt: %d/500, Còn lại: %s)! BẬT FARM.", d.Killed, tostring(d.Rem)))
+                    Config.AutoFarm = true
+                    saveSettings()
+                else
+                    print(string.format("⚠️ [Katakuri Check] Server còn phải đánh %s con (> %d con)! Đổi server khác...", tostring(d.Rem), 500 - Config.MinKilledToStay))
+                    hopRandomServer()
+                    return
+                end
+            end
+            task.wait(1.0)
+        end
+    end
+end)
+
+-- Theo dõi sau khi Boss Katakuri bị hạ gục -> Tự động chuyển server mới
+local hadBossSpawned = false
+task.spawn(function()
+    while scriptID == _G.KatakuriFarmID do
+        task.wait(1.5)
+        if Config.AutoHopAfterKillBoss then
+            local d = updateKataData()
+            if d.Boss and d.Hp > 0 then
+                hadBossSpawned = true
+            elseif hadBossSpawned and (not d.Boss or d.Hp <= 0) then
+                hadBossSpawned = false
+                print("🎉 [Katakuri Pro] ĐÃ DIỆT XONG KATAKURI! Bắt đầu chuyển sang server ngẫu nhiên mới...")
+                task.wait(2)
+                hopRandomServer()
+            end
+        end
+    end
+end)
+
+-- =========================================================================
 -- HỆ THỐNG DI CHUYỂN & TRIỆT TIÊU TRỌNG LỰC (BODYVELOCITY CHỐNG RƠI / GIẬT)
 -- =========================================================================
 local activeTween = nil
 local currentFarmCFrame = nil
 local activeAttackEntity = nil
 
--- Gắn BodyVelocity lực cực đại (9e9) để triệt tiêu hoàn toàn trọng lực khi farm
 local function applyAntiGravity(hrp)
     local bv = hrp:FindFirstChild("FarmFlightBV")
     if not bv then
@@ -379,17 +521,13 @@ local function DiChuyenDen(targetCF)
         activeTween = TweenService:Create(hrp, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = targetCF})
         activeTween:Play()
     else
-        if activeTween then
-            activeTween:Cancel()
-            activeTween = nil
-        end
+        if activeTween then activeTween:Cancel() activeTween = nil end
         hrp.Velocity = Vector3.zero
         hrp.RotVelocity = Vector3.zero
         hrp.CFrame = targetCF
     end
 end
 
--- Noclip & Duy trì Anti-Gravity liên tục trong suốt quá trình farm
 RunService.Stepped:Connect(function()
     if Config.AutoFarm and LP.Character then
         for _, p in ipairs(LP.Character:GetDescendants()) do
@@ -402,7 +540,7 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- ==================== GOM QUÁI MAGNET 60x60 (KHÔNG LÀM ĐƠ QUÁI) ====================
+-- ==================== GOM QUÁI MAGNET 60x60 ====================
 task.spawn(function()
     while scriptID == _G.KatakuriFarmID do
         task.wait()
@@ -435,7 +573,7 @@ task.spawn(function()
     end
 end)
 
--- ==================== LUỒNG ĐÁNH SIÊU NHANH X4 (100 CPS BURST) ====================
+-- ==================== LUỒNG ĐÁNH SIÊU NHANH X4 (100 CPS) ====================
 task.spawn(function()
     while scriptID == _G.KatakuriFarmID do
         task.wait(0.01)
@@ -449,7 +587,6 @@ task.spawn(function()
                         local head = activeAttackEntity:FindFirstChild("Head") or er
                         local list = {{activeAttackEntity, head}}
                         
-                        -- Chém lan toàn bộ quái trong cụm gom
                         if Config.AutoBring and workspace:FindFirstChild("Enemies") then
                             for _, e in ipairs(workspace.Enemies:GetChildren()) do
                                 if e ~= activeAttackEntity and isAlive(e) and isCakeMob(e) then
@@ -461,7 +598,6 @@ task.spawn(function()
                             end
                         end
                         
-                        -- Bypass Cooldown CombatFramework
                         if CombatController and CombatController.activeController then
                             pcall(function()
                                 local ac = CombatController.activeController
@@ -470,7 +606,6 @@ task.spawn(function()
                             end)
                         end
                         
-                        -- Burst gói tin đòn đánh
                         for _ = 1, math.clamp(Config.AttackMultiplier or 4, 1, 6) do
                             RegisterAttack:FireServer(0)
                             if hitFunc then pcall(function() hitFunc(head, list) end) else RegisterHit:FireServer(head, list) end
@@ -516,7 +651,6 @@ task.spawn(function()
                 local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
                 
-                -- Tự động đảm bảo luôn cầm Melee trên tay
                 TrangBiVuKhi()
                 
                 -- 1. Ưu tiên Boss Katakuri
@@ -529,7 +663,6 @@ task.spawn(function()
                         local animator = bh:FindFirstChild("Animator")
                         if animator then animator:Destroy() end
                         
-                        -- Bay lơ lửng an toàn trên đầu boss (15 studs)
                         local tPos = br.CFrame * CFrame.new(0, Config.FarmDistance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
                         DiChuyenDen(tPos)
                         return
@@ -562,7 +695,6 @@ task.spawn(function()
                         local animator = mh:FindFirstChild("Animator")
                         if animator then animator:Destroy() end
                         
-                        -- Bay lơ lửng an toàn trên đầu quái (15 studs)
                         local tPos = mr.CFrame * CFrame.new(0, Config.FarmDistance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
                         DiChuyenDen(tPos)
                     else
@@ -925,7 +1057,8 @@ local T2 = addTab("Gom Quái", "🌪️")
 local T3 = addTab("Tấn Công", "⚔️")
 local T4 = addTab("Haki & Tộc", "🛡️")
 local T5 = addTab("Di Chuyển", "🚀")
-local T6 = addTab("Cài Đặt", "⚙️")
+local T6 = addTab("Đổi Server", "🌐")
+local T7 = addTab("Cài Đặt", "⚙️")
 
 -- Tab 1: Katakuri
 addDashboard(T1)
@@ -955,9 +1088,15 @@ addSlider(T5, "🚀 Tốc Độ Bay (Max 250 studs/s)", "FlySpeed", 50, 250, 10)
 addSlider(T5, "📏 Khoảng Cách Trên Quái (Height)", "FarmDistance", 10, 25, 1)
 addToggle(T5, "👻 Đi Xuyên Tường (NoClip)", "NoClip")
 
--- Tab 6: Cài Đặt
-addButton(T6, "💾 Lưu Cấu Hình (" .. saveFile .. ")", Color3.fromRGB(50, 200, 120), saveSettings)
-addButton(T6, "📂 Nạp Cấu Hình Đã Lưu", Color3.fromRGB(70, 150, 255), loadSettings)
+-- Tab 6: Đổi Server (Server Hopper)
+addToggle(T6, "🌐 Tự Đổi Server Khi Chưa Đủ 300 Quái", "AutoHopKatakuriServer")
+addSlider(T6, "📊 Số Quái Đã Diệt Tối Thiểu Để Ở Lại", "MinKilledToStay", 100, 450, 25)
+addToggle(T6, "🔄 Đổi Server Sau Khi Diệt Xong Katakuri", "AutoHopAfterKillBoss")
+addButton(T6, "✈️ Đổi Sang Server Ngẫu Nhiên Ngay", Color3.fromRGB(0, 180, 255), function() hopRandomServer() end)
+
+-- Tab 7: Cài Đặt
+addButton(T7, "💾 Lưu Cấu Hình (" .. saveFile .. ")", Color3.fromRGB(50, 200, 120), saveSettings)
+addButton(T7, "📂 Nạp Cấu Hình Đã Lưu", Color3.fromRGB(70, 150, 255), loadSettings)
 
 switchTab("Katakuri")
 print("[Katakuri Farm Pro] Khởi chạy thành công! Cấu hình lưu tại: " .. saveFile)
