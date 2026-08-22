@@ -316,7 +316,7 @@ task.spawn(function()
 end)
 
 -- ==================== QUẢN LÝ QUÁI, QUEST & BOSS KATAKURI ====================
-local CakeIslandMobs = {"Cookie Crafter", "Cake Guard", "Baking Staff", "Head Baker", "Peanut Scout", "Peanut President", "Ice Cream Chef", "Ice Cream Commander"}
+local CakeIslandMobs = {"Cookie Crafter", "Cake Guard", "Baking Staff", "Head Baker"}
 local KatakuriBosses = {"Cake Prince", "Cake Prince [Lv. 2300] [Raid Boss]", "Dough King", "Dough King [Lv. 2300] [Raid Boss]"}
 local CakeIslandPos = CFrame.new(-2091.91, 70.01, -12142.84)
 local MirrorPos = CFrame.new(-2091.91, 70.01, -12142.84)
@@ -335,11 +335,7 @@ local function takeQuest(name)
         if name:find("Cookie") then CommF:InvokeServer("StartQuest", "CakeQuest1", 1)
         elseif name:find("Cake Guard") then CommF:InvokeServer("StartQuest", "CakeQuest1", 2)
         elseif name:find("Baking") then CommF:InvokeServer("StartQuest", "CakeQuest2", 1)
-        elseif name:find("Head Baker") then CommF:InvokeServer("StartQuest", "CakeQuest2", 2)
-        elseif name:find("Peanut Scout") then CommF:InvokeServer("StartQuest", "PeanutQuest", 1)
-        elseif name:find("Peanut President") then CommF:InvokeServer("StartQuest", "PeanutQuest", 2)
-        elseif name:find("Ice Cream Chef") then CommF:InvokeServer("StartQuest", "IceCreamIslandQuest", 1)
-        elseif name:find("Ice Cream Commander") then CommF:InvokeServer("StartQuest", "IceCreamIslandQuest", 2) end
+        elseif name:find("Head Baker") then CommF:InvokeServer("StartQuest", "CakeQuest2", 2) end
     end)
 end
 
