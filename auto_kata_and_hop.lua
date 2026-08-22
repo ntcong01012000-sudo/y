@@ -3,26 +3,30 @@
     🍩 BLOX FRUITS - KATAKURI ULTRA FARM & SMART SERVER HOPPER (PRO EDITION) 🍩
     ========================================================================================
     ✨ TÍNH NĂNG ĐỘT PHÁ:
-      1. Centralized Katakuri Tracker (Chuẩn xác 100%):
+      1. Cơ Chế Chống Kẹt & Tự Bỏ Qua Quái Đơ (Anti-Stuck Damage Protection):
+         - Tự động theo dõi sát thương lên quái theo thời gian thực.
+         - Nếu sau 1 phút (60 giây) liên tục đánh mà quái KHÔNG MẤT MÁU (do quái bị lỗi/bất tử/đơ) -> TỰ ĐỘNG TẠM DỪNG FARM LOẠI QUÁI ĐÓ TRONG 2 PHÚT (120 giây) và chuyển ngay sang farm loại quái khác trên Đảo Bánh.
+         - Hết 2 phút tạm dừng -> Tự động quay lại farm bình thường khi quái đã hồi sinh mới.
+      2. Centralized Katakuri Tracker (Chuẩn xác 100%):
          - Ưu tiên bóc tách con số từ CakePrinceSpawner (Số trả về = Remaining / Quái còn lại).
          - Tránh lỗi nhận nhầm từ khóa "opened" trong câu thoại "has not been opened yet".
          - Tính toán chuẩn xác: Số đã diệt = 500 - Số còn lại.
-      2. Tự Động Kiểm Tra & Lọc Server Thông Minh Khi Mới Vào:
+      3. Tự Động Kiểm Tra & Lọc Server Thông Minh Khi Mới Vào:
          - Nếu server CÒN PHẢI ĐÁNH HƠN 200 con (đã diệt < 300 con) -> TỰ ĐỘNG ĐỔI SERVER NGAY.
          - Nếu server ĐÃ DIỆT ÍT NHẤT 300/500 con (còn lại <= 200 con / Cổng mở / Có Boss) -> Ở lại và TỰ ĐỘNG BẬT FARM!
-      3. Tự Động Đổi Server Sau Khi Diệt Boss: Khi boss Katakuri chết -> Tự động chuyển ngay sang server ngẫu nhiên mới chưa vào.
-      4. Server Browser Random Hop Siêu Tốc:
+      4. Tự Động Đổi Server Sau Khi Diệt Boss: Khi boss Katakuri chết -> Tự động chuyển ngay sang server ngẫu nhiên mới chưa vào.
+      5. Server Browser Random Hop Siêu Tốc:
          - Quét song song Asc & Desc, lọc server còn chỗ (1-11 người).
          - Kết nối qua __ServerBrowser và TeleportToPlaceInstance với vòng lặp thử lần lượt từng server.
          - Dự phòng TeleportService:Teleport(placeId) đảm bảo 100% đổi server thành công.
-      5. Tự Động Trang Bị Melee (Cận chiến) liên tục trong suốt trận đánh.
-      6. Tự Động Bật Tộc V4 (Awakening - Phím Y) & Tộc V3 (Ability - Phím T) & Haki (Buso, Ken).
-      7. Triệt tiêu 100% trọng lực bằng BodyVelocity (9e9) - Lơ lửng 15 studs không bị rơi/giật và quái không thể đánh trúng.
-      8. Gom Quái Magnet 60x60 (SimulationRadius huge + ChangeState 11, 14 - Không bị đơ quái).
-      9. Đánh Siêu Nhanh x4 (100 CPS Multi Burst + Bypass Cooldown CombatFramework).
-      10. Tự Động Nhận Nhiệm Vụ (Auto Quest Beli & EXP).
-      11. Tự Động Chọn Phe Hải Tặc (Auto Set Team Pirates) & Lưu/Tải Cấu Hình theo tên người dùng.
-      12. Dashboard Katakuri chi tiết & GUI Icon trôi nổi (🍩) kéo thả tiện lợi trên PC/Mobile.
+      6. Tự Động Trang Bị Melee (Cận chiến) liên tục trong suốt trận đánh.
+      7. Tự Động Bật Tộc V4 (Awakening - Phím Y) & Tộc V3 (Ability - Phím T) & Haki (Buso, Ken).
+      8. Triệt tiêu 100% trọng lực bằng BodyVelocity (9e9) - Lơ lửng 15 studs không bị rơi/giật và quái không thể đánh trúng.
+      9. Gom Quái Magnet 60x60 (SimulationRadius huge + ChangeState 11, 14 - Không bị đơ quái).
+      10. Đánh Siêu Nhanh x4 (100 CPS Multi Burst + Bypass Cooldown CombatFramework).
+      11. Tự Động Nhận Nhiệm Vụ (Auto Quest Beli & EXP).
+      12. Tự Động Chọn Phe Hải Tặc (Auto Set Team Pirates) & Lưu/Tải Cấu Hình theo tên người dùng.
+      13. Dashboard Katakuri chi tiết & GUI Icon trôi nổi (🍩) kéo thả tiện lợi trên PC/Mobile.
     ========================================================================================
 --]]
 
@@ -71,6 +75,10 @@ local Config = {
     AutoHopKatakuriServer = true,  -- Tự đổi server nếu server chưa đánh đủ quái
     MinKilledToStay = 300,         -- Đã đánh ít nhất 300 con thì mới ở lại (còn lại <= 200 con)
     AutoHopAfterKillBoss = true,   -- Tự đổi server sau khi diệt xong Katakuri
+    
+    AntiStuckMob = true,           -- Tự bỏ qua quái đơ/không mất máu sau 1 phút
+    StuckTimeout = 60,             -- Thời gian không gây được sát thương (giây) -> Bỏ qua
+    BlacklistDuration = 120,       -- Thời gian tạm dừng farm loại quái đơ (120s = 2 phút)
     
     AutoBring = true,
     BringRadius = 300,
@@ -180,6 +188,31 @@ end)
 local function isAlive(e)
     local hum = e and e.Parent and e:FindFirstChildOfClass("Humanoid")
     return hum and hum.Health > 0
+end
+
+-- ==================== HỆ THỐNG CHỐNG KẸT & TẠM DỪNG QUÁI ĐƠ ====================
+local mobBlacklist = {}
+
+local function isBlacklisted(mob)
+    if not mob then return false end
+    local now = tick()
+    if mobBlacklist[mob] then
+        if now < mobBlacklist[mob] then return true else mobBlacklist[mob] = nil end
+    end
+    if mob.Name and mobBlacklist[mob.Name] then
+        if now < mobBlacklist[mob.Name] then return true else mobBlacklist[mob.Name] = nil end
+    end
+    return false
+end
+
+local function blacklistMob(mob, duration)
+    duration = duration or Config.BlacklistDuration or 120
+    if mob then
+        local expireTime = tick() + duration
+        mobBlacklist[mob] = expireTime
+        if mob.Name then mobBlacklist[mob.Name] = expireTime end
+        print(string.format("⚠️ [Anti-Stuck] Quái '%s' không mất máu sau 1 phút! Tạm dừng farm loại này trong %d giây...", tostring(mob.Name), duration))
+    end
 end
 
 -- ==================== TỰ ĐỘNG TRANG BỊ MELEE / VŨ KHÍ ====================
@@ -357,14 +390,12 @@ task.spawn(function()
             local killed = 0
             
             if type(res) == "string" then
-                -- 1. Ưu tiên bóc tách con số trước (số trả về là số quái CÒN LẠI cần đánh)
                 local num = tonumber(res:match("%d+"))
                 if num then
                     remaining = math.clamp(num, 0, 500)
                     killed = math.clamp(500 - remaining, 0, 500)
                     open = (remaining == 0)
                 else
-                    -- 2. Chỉ khi không có số nào thì mới xét xem cổng đã mở hoặc boss xuất hiện chưa
                     local text = res:lower()
                     if text:find("spawn") or text:find("arrived") or (text:find("open") and not text:find("not")) then
                         open = true
@@ -600,7 +631,7 @@ task.spawn(function()
         if Config.AutoFarm and Config.AutoBring and currentFarmCFrame and workspace:FindFirstChild("Enemies") then
             pcall(function()
                 for _, v in ipairs(workspace.Enemies:GetChildren()) do
-                    if isAlive(v) and not v:GetAttribute("IsBoat") and isCakeMob(v) and not v.Name:find("Prince") and not v.Name:find("King") then
+                    if isAlive(v) and not v:GetAttribute("IsBoat") and isCakeMob(v) and not isBlacklisted(v) and not v.Name:find("Prince") and not v.Name:find("King") then
                         local vr, vh, head = v:FindFirstChild("HumanoidRootPart"), v:FindFirstChildOfClass("Humanoid"), v:FindFirstChild("Head")
                         if vr and vh and (vr.Position - currentFarmCFrame.Position).Magnitude <= Config.BringRadius then
                             vr.Size = Vector3.new(60, 60, 60)
@@ -621,7 +652,7 @@ end)
 task.spawn(function()
     while scriptID == _G.KatakuriFarmID do
         task.wait(0.01)
-        if Config.FastAttack and Config.AutoFarm and activeAttackEntity and isAlive(activeAttackEntity) and LP.Character then
+        if Config.FastAttack and Config.AutoFarm and activeAttackEntity and isAlive(activeAttackEntity) and not isBlacklisted(activeAttackEntity) and LP.Character then
             pcall(function()
                 local hrp = LP.Character:FindFirstChild("HumanoidRootPart")
                 local er = activeAttackEntity:FindFirstChild("HumanoidRootPart") or activeAttackEntity.PrimaryPart
@@ -633,7 +664,7 @@ task.spawn(function()
                         
                         if Config.AutoBring and workspace:FindFirstChild("Enemies") then
                             for _, e in ipairs(workspace.Enemies:GetChildren()) do
-                                if e ~= activeAttackEntity and isAlive(e) and isCakeMob(e) then
+                                if e ~= activeAttackEntity and isAlive(e) and isCakeMob(e) and not isBlacklisted(e) then
                                     local r = e:FindFirstChild("HumanoidRootPart") or e.PrimaryPart
                                     if r and (r.Position - hrp.Position).Magnitude <= 55 then
                                         table.insert(list, {e, e:FindFirstChild("Head") or r})
@@ -663,19 +694,66 @@ task.spawn(function()
     end
 end)
 
--- ==================== VÒNG LẶP FARM CHÍNH ====================
+-- ==================== VÒNG LẶP FARM CHÍNH & THEO DÕI SÁT THƯƠNG ====================
 local currentTargetName = nil
 local farmingMob = nil
 
+local damageTracker = {
+    Target = nil,
+    LastHealth = nil,
+    LastDamageTime = 0,
+    StartTime = 0
+}
+
+local function checkDamageTracking(mob)
+    if not Config.AntiStuckMob then return end
+    if not mob or not isAlive(mob) then
+        damageTracker.Target = nil
+        damageTracker.LastHealth = nil
+        damageTracker.StartTime = 0
+        damageTracker.LastDamageTime = 0
+        return
+    end
+    
+    local hum = mob:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    
+    local currentHp = hum.Health
+    local now = tick()
+    
+    if damageTracker.Target ~= mob then
+        damageTracker.Target = mob
+        damageTracker.LastHealth = currentHp
+        damageTracker.StartTime = now
+        damageTracker.LastDamageTime = now
+    else
+        if currentHp < (damageTracker.LastHealth or currentHp) then
+            damageTracker.LastHealth = currentHp
+            damageTracker.LastDamageTime = now
+        else
+            local timeout = Config.StuckTimeout or 60
+            if (now - damageTracker.LastDamageTime) >= timeout and (now - damageTracker.StartTime) >= timeout then
+                blacklistMob(mob, Config.BlacklistDuration or 120)
+                farmingMob = nil
+                activeAttackEntity = nil
+                damageTracker.Target = nil
+                damageTracker.LastHealth = nil
+                damageTracker.StartTime = 0
+                damageTracker.LastDamageTime = 0
+            end
+        end
+    end
+end
+
 local function getTargetMob()
-    if farmingMob and isAlive(farmingMob) then return farmingMob end
+    if farmingMob and isAlive(farmingMob) and not isBlacklisted(farmingMob) then return farmingMob end
     farmingMob = nil
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if not hrp or not workspace:FindFirstChild("Enemies") then return nil end
     
     local nearest, minDist = nil, math.huge
     for _, e in ipairs(workspace.Enemies:GetChildren()) do
-        if isAlive(e) and not e:GetAttribute("IsBoat") and isCakeMob(e) then
+        if isAlive(e) and not e:GetAttribute("IsBoat") and isCakeMob(e) and not isBlacklisted(e) then
             local r = e:FindFirstChild("HumanoidRootPart") or e.PrimaryPart
             if r then
                 local d = (r.Position - hrp.Position).Magnitude
@@ -727,7 +805,7 @@ task.spawn(function()
                 
                 if Config.AutoSpawnBoss then pcall(function() CommF:InvokeServer("CakePrinceSpawner", true) end) end
                 
-                -- 2. Farm quái Đảo Bánh
+                -- 2. Farm quái Đảo Bánh (Được bảo vệ bởi Anti-Stuck)
                 local mob = getTargetMob()
                 if mob then
                     local mr = mob:FindFirstChild("HumanoidRootPart") or mob.PrimaryPart
@@ -735,6 +813,9 @@ task.spawn(function()
                     if mr and mh and mh.Health > 0 then
                         currentTargetName, activeAttackEntity, currentFarmCFrame = mob.Name, mob, mr.CFrame
                         takeQuest(mob.Name)
+                        
+                        -- Kiểm tra theo dõi sát thương lên quái
+                        checkDamageTracking(mob)
                         
                         local animator = mh:FindFirstChild("Animator")
                         if animator then animator:Destroy() end
@@ -746,7 +827,7 @@ task.spawn(function()
                     end
                 else
                     farmingMob, activeAttackEntity, currentFarmCFrame = nil, nil, nil
-                    currentTargetName = "Đang tìm quái..."
+                    currentTargetName = "Đang tìm quái khả dụng..."
                     DiChuyenDen(CakeIslandPos)
                 end
             end)
@@ -1112,9 +1193,10 @@ addToggle(T1, "✨ Tự Động Gọi Boss (Auto Spawn)", "AutoSpawnBoss")
 addToggle(T1, "👑 Chỉ Đánh Boss Katakuri", "AutoKillBossOnly")
 addButton(T1, "🚀 Triệu Hồi Katakuri Ngay", Color3.fromRGB(255, 170, 40), function() pcall(function() CommF:InvokeServer("CakePrinceSpawner", true) end) end)
 
--- Tab 2: Gom Quái
+-- Tab 2: Gom Quái & Chống Kẹt Quái
 addToggle(T2, "🌪️ Bật Gom Quái Siêu Tốc (Magnet)", "AutoBring")
 addSlider(T2, "📍 Bán Kính Gom Quái (Studs)", "BringRadius", 100, 400, 20)
+addToggle(T2, "🛡️ Chống Quái Đơ (Bỏ Qua Sau 1 Phút Không Mất Máu)", "AntiStuckMob")
 
 -- Tab 3: Tấn Công
 addToggle(T3, "⚡ Đánh Siêu Nhanh (Fast Attack x4)", "FastAttack")
