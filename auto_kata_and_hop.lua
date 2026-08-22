@@ -3,9 +3,10 @@
     🍩 BLOX FRUITS - KATAKURI ULTRA FARM & SMART SERVER HOPPER (PRO EDITION) 🍩
     ========================================================================================
     ✨ TÍNH NĂNG ĐỘT PHÁ:
-      1. Centralized Katakuri Tracker:
-         - 1 luồng duy nhất định kỳ 1.5s truy vấn CakePrinceSpawner, triệt tiêu 100% tình trạng spam/nghẽn RemoteFunction.
-         - Phân tích chính xác số quái CÒN LẠI (Remaining) & ĐÃ DIỆT (Killed = 500 - Remaining).
+      1. Centralized Katakuri Tracker (Chuẩn xác 100%):
+         - Ưu tiên bóc tách con số từ CakePrinceSpawner (Số trả về = Remaining / Quái còn lại).
+         - Tránh lỗi nhận nhầm từ khóa "opened" trong câu thoại "has not been opened yet".
+         - Tính toán chuẩn xác: Số đã diệt = 500 - Số còn lại.
       2. Tự Động Kiểm Tra & Lọc Server Thông Minh Khi Mới Vào:
          - Nếu server CÒN PHẢI ĐÁNH HƠN 200 con (đã diệt < 300 con) -> TỰ ĐỘNG ĐỔI SERVER NGAY.
          - Nếu server ĐÃ DIỆT ÍT NHẤT 300/500 con (còn lại <= 200 con / Cổng mở / Có Boss) -> Ở lại và TỰ ĐỘNG BẬT FARM!
@@ -356,16 +357,19 @@ task.spawn(function()
             local killed = 0
             
             if type(res) == "string" then
-                local text = res:lower()
-                if text:find("open") or text:find("spawn") or text:find("arrived") then
-                    open = true
-                    remaining = 0
-                    killed = 500
+                -- 1. Ưu tiên bóc tách con số trước (số trả về là số quái CÒN LẠI cần đánh)
+                local num = tonumber(res:match("%d+"))
+                if num then
+                    remaining = math.clamp(num, 0, 500)
+                    killed = math.clamp(500 - remaining, 0, 500)
+                    open = (remaining == 0)
                 else
-                    local num = tonumber(res:match("%d+"))
-                    if num then
-                        remaining = math.clamp(num, 0, 500)
-                        killed = math.clamp(500 - remaining, 0, 500)
+                    -- 2. Chỉ khi không có số nào thì mới xét xem cổng đã mở hoặc boss xuất hiện chưa
+                    local text = res:lower()
+                    if text:find("spawn") or text:find("arrived") or (text:find("open") and not text:find("not")) then
+                        open = true
+                        remaining = 0
+                        killed = 500
                     end
                 end
             elseif open then
@@ -376,7 +380,7 @@ task.spawn(function()
             kataData.Rem = remaining
             kataData.Killed = killed
             kataData.Pct = math.floor((killed / 500) * 100)
-            kataData.Open = open or (remaining == 0)
+            kataData.Open = open or (remaining == 0) or (boss ~= nil)
             kataData.Boss = boss and boss.Name or (open and "Cake Prince / Dough King" or nil)
             kataData.Hp = bHum and bHum.Health > 0 and math.floor(bHum.Health) or 0
             kataData.MaxHp = bHum and bHum.MaxHealth > 0 and math.floor(bHum.MaxHealth) or 0
