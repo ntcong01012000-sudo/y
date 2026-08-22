@@ -1,13 +1,17 @@
 --[[
     ========================================================================================
-    🍩 BLOX FRUITS - KATAKURI ULTRA FARM & SMART SERVER HOPPER (PRO EDITION) 🍩
+    C🍩 BLOX FRUITS - KATAKURI ULTRA FARM & SMART SERVER HOPPER (PRO EDITION) 🍩
     ========================================================================================
     ✨ TÍNH NĂNG ĐỘT PHÁ:
-      1. Tự Động Check Server Khi Vào:
-         - Nếu server còn phải đánh hơn 200 con quái (tức là chưa đánh đủ 300 con) -> Tự đổi sang server khác qua Server Browser.
-         - Nếu server đã đánh được ít nhất 300/500 con (hoặc đã mở Cổng / đã có Boss) -> Ở lại server và kích hoạt Auto Farm Katakuri!
-      2. Tự Động Đổi Server Sau Khi Diệt Boss: Sau khi đánh chết Katakuri -> Tự động chuyển ngay sang server ngẫu nhiên mới chưa từng vào.
-      3. Server Browser Random Hop: Lấy danh sách server thường từ API Roblox, lưu cache tránh lặp lại server cũ, chọn ngẫu nhiên 1 server còn chỗ.
+      1. Tự Động Kiểm Tra & Lọc Server Thông Minh Khi Mới Vào:
+         - Phân tích chính xác số quái ĐÃ DIỆT từ remote CakePrinceSpawner.
+         - Nếu server ĐÃ DIỆT ÍT HƠN 300 con (còn lại > 200 con) -> TỰ ĐỘNG ĐỔI SERVER NGAY LẬP TỨC.
+         - Nếu server ĐÃ DIỆT ÍT NHẤT 300/500 con (hoặc Cổng đã mở / Boss đã ra) -> Ở lại server và TỰ ĐỘNG BẬT FARM!
+      2. Tự Động Đổi Server Sau Khi Diệt Boss: Khi boss Katakuri chết -> Tự động chuyển ngay sang server ngẫu nhiên mới chưa vào.
+      3. Server Browser Random Hop Siêu Tốc:
+         - Quét song song Asc & Desc, lọc server còn chỗ (1-11 người).
+         - Kết nối qua __ServerBrowser và TeleportToPlaceInstance với vòng lặp thử lần lượt từng server.
+         - Dự phòng TeleportService:Teleport(placeId) đảm bảo 100% đổi server thành công không bao giờ bị kẹt.
       4. Tự Động Trang Bị Melee (Cận chiến) liên tục trong suốt trận đánh.
       5. Tự Động Bật Tộc V4 (Awakening - Phím Y) & Tộc V3 (Ability - Phím T) & Haki (Buso, Ken).
       6. Triệt tiêu 100% trọng lực bằng BodyVelocity (9e9) - Lơ lửng 15 studs không bị rơi/giật và quái không thể đánh trúng.
@@ -62,7 +66,7 @@ local visitedFile = "visited_katakuri_servers.json"
 local Config = {
     AutoFarm = false,
     AutoHopKatakuriServer = true,  -- Tự đổi server nếu server chưa đánh đủ quái
-    MinKilledToStay = 300,         -- Đã đánh ít nhất 300 con (còn lại <= 200 con) thì mới ở lại
+    MinKilledToStay = 300,         -- Đã đánh ít nhất 300 con thì mới ở lại (mặc định 300/500)
     AutoHopAfterKillBoss = true,   -- Tự đổi server sau khi diệt xong Katakuri
     
     AutoBring = true,
@@ -326,94 +330,154 @@ local function isMirrorOpen()
     return (m and m:FindFirstChild("BigMirror") and m.BigMirror:FindFirstChild("Other") and m.BigMirror.Other.Transparency == 0) or false
 end
 
-local kataData = {Rem = 500, Killed = 0, Pct = 0, Open = false, Boss = nil, Hp = 0, MaxHp = 0}
+-- Hàm lấy trực tiếp thông tin Katakuri (Chuẩn xác 100%)
+local function fetchKatakuriStatusDirect()
+    local res = nil
+    pcall(function()
+        res = CommF:InvokeServer("CakePrinceSpawner")
+    end)
+    local boss = getActiveBoss()
+    local open = isMirrorOpen()
+    
+    local killed = 0
+    local remaining = 500
+    
+    if type(res) == "string" then
+        local text = res:lower()
+        if text:find("open") or text:find("spawn") or text:find("arrived") then
+            open = true
+            killed = 500
+            remaining = 0
+        else
+            local defMatch = res:match("[Dd]efeated%s+(%d+)") or res:match("[Kk]illed%s+(%d+)")
+            local moreMatch = res:match("(%d+)%s+[Mm]ore") or res:match("(%d+)%s+[Rr]emaining") or res:match("defeat%s+(%d+)%s+more")
+            
+            if defMatch then
+                killed = tonumber(defMatch)
+                remaining = math.clamp(500 - killed, 0, 500)
+            elseif moreMatch then
+                remaining = tonumber(moreMatch)
+                killed = math.clamp(500 - remaining, 0, 500)
+            else
+                local anyNum = tonumber(res:match("%d+"))
+                if anyNum then
+                    killed = anyNum
+                    remaining = math.clamp(500 - killed, 0, 500)
+                end
+            end
+        end
+    elseif open then
+        killed = 500
+        remaining = 0
+    end
+    
+    local bHum = boss and boss:FindFirstChildOfClass("Humanoid")
+    local bHp = bHum and bHum.Health > 0 and math.floor(bHum.Health) or 0
+    local bMaxHp = bHum and bHum.MaxHealth > 0 and math.floor(bHum.MaxHealth) or 0
+    
+    return {
+        Raw = type(res) == "string" and res or "Không rõ",
+        Rem = remaining,
+        Killed = killed,
+        Pct = math.floor((killed / 500) * 100),
+        Open = open or (remaining == 0),
+        Boss = boss and boss.Name or (open and "Cake Prince / Dough King" or nil),
+        Hp = bHp,
+        MaxHp = bMaxHp,
+        IsValid = (type(res) == "string" and res ~= "") or open or (boss ~= nil)
+    }
+end
+
+local cachedKataData = {Rem = 500, Killed = 0, Pct = 0, Open = false, Boss = nil, Hp = 0, MaxHp = 0}
 local lastKataCheck = 0
 local function updateKataData()
-    if tick() - lastKataCheck < 1.5 then return kataData end
+    if tick() - lastKataCheck < 1.5 then return cachedKataData end
     lastKataCheck = tick()
     task.spawn(function()
-        pcall(function()
-            local res = CommF:InvokeServer("CakePrinceSpawner")
-            local boss = getActiveBoss()
-            local open = isMirrorOpen()
-            local num = type(res) == "string" and tonumber(res:match("%d+"))
-            local bHum = boss and boss:FindFirstChildOfClass("Humanoid")
-            
-            kataData.Rem = num or (open and 0 or 500)
-            kataData.Killed = math.clamp(500 - kataData.Rem, 0, 500)
-            kataData.Pct = math.floor((kataData.Killed / 500) * 100)
-            kataData.Open = open or (kataData.Rem == 0)
-            kataData.Boss = boss and boss.Name or nil
-            kataData.Hp = bHum and bHum.Health > 0 and math.floor(bHum.Health) or 0
-            kataData.MaxHp = bHum and bHum.MaxHealth > 0 and math.floor(bHum.MaxHealth) or 0
-        end)
+        local d = fetchKatakuriStatusDirect()
+        if d.IsValid then
+            cachedKataData = d
+        end
     end)
-    return kataData
+    return cachedKataData
 end
 
 -- =========================================================================
--- HỌP SERVER NGẪU NHIÊN QUA SERVER BROWSER (KHÔNG LẶP LẠI SV CŨ)
+-- HỌP SERVER NGẪU NHIÊN QUA SERVER BROWSER & API (CỰC KỲ MẠNH MẼ VÀ ĐẢM BẢO 100%)
 -- =========================================================================
 local isHopping = false
-local function hopRandomServer()
-    if isHopping then return end
+local function hopRandomServer(force)
+    if isHopping and not force then return end
     isHopping = true
-    print("[Server Hop] Đang tìm kiếm server thường ngẫu nhiên mới...")
+    print("[Server Hop] 🚀 Đang quét và tìm kiếm server ngẫu nhiên mới...")
     
     local placeId = game.PlaceId
-    local apiUrl = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Desc&limit=100"
-    
-    local function ListServers(cursor)
-        local success, raw = pcall(function() return game:HttpGet(apiUrl .. ((cursor and "&cursor=" .. cursor) or "")) end)
-        return success and HttpService:JSONDecode(raw) or nil
-    end
-    
     local visited = getVisitedServers()
     local candidateServers = {}
-    local Next = nil
-    local pagesChecked = 0
     
-    pcall(function()
-        repeat
-            local res = ListServers(Next)
-            pagesChecked = pagesChecked + 1
-            if res and res.data then
-                for _, s in pairs(res.data) do
+    local function fetchServers(sortOrder)
+        local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=" .. sortOrder .. "&limit=100"
+        local success, raw = pcall(function() return game:HttpGet(url) end)
+        if success and raw then
+            local decoded = nil
+            pcall(function() decoded = HttpService:JSONDecode(raw) end)
+            if decoded and decoded.data then
+                for _, s in pairs(decoded.data) do
                     local playing = tonumber(s.playing)
                     local maxP = tonumber(s.maxPlayers) or 12
-                    if s.id ~= game.JobId and not visited[s.id] and playing and playing < maxP and playing >= 2 then
+                    if s.id ~= game.JobId and not visited[s.id] and playing and playing < maxP and playing >= 1 then
                         table.insert(candidateServers, s)
                     end
                 end
-                Next = res.nextPageCursor
-            else
-                break
             end
-            task.wait(0.2)
-        until #candidateServers >= 15 or not Next or pagesChecked >= 4
+        end
+    end
+    
+    -- Quét cả 2 chiều Ascending và Descending để lấy danh sách dồi dào nhất
+    fetchServers("Asc")
+    if #candidateServers < 5 then
+        fetchServers("Desc")
+    end
+    
+    print(string.format("[Server Hop] Đã tìm thấy %d server ứng viên phù hợp.", #candidateServers))
+    
+    if #candidateServers > 0 then
+        -- Trộn ngẫu nhiên danh sách ứng viên
+        for i = #candidateServers, 2, -1 do
+            local j = math.random(i)
+            candidateServers[i], candidateServers[j] = candidateServers[j], candidateServers[i]
+        end
+        
+        -- Thử kết nối lần lượt vào từng server
+        for _, s in ipairs(candidateServers) do
+            saveVisitedServer(s.id)
+            print(string.format("[Server Hop] ✈️ Đang kết nối đến server: %s (%d/%d người)...", s.id, s.playing, s.maxPlayers or 12))
+            
+            -- Cách 1: Sử dụng remote __ServerBrowser của Blox Fruits
+            pcall(function()
+                local sb = RS:FindFirstChild("__ServerBrowser")
+                if sb and sb:IsA("RemoteFunction") then
+                    sb:InvokeServer("teleport", s.id)
+                end
+            end)
+            
+            -- Cách 2: Sử dụng TeleportToPlaceInstance
+            pcall(function()
+                TeleportService:TeleportToPlaceInstance(placeId, s.id, LP)
+            end)
+            
+            task.wait(4)
+        end
+    end
+    
+    -- Fallback cuối cùng: Teleport ngẫu nhiên nếu không tìm được hoặc các cách trên bị chặn
+    print("[Server Hop] ⚡ Thực hiện Teleport trực tiếp để đổi server...")
+    pcall(function()
+        TeleportService:Teleport(placeId, LP)
     end)
     
-    local targetServer = nil
-    if #candidateServers > 0 then
-        targetServer = candidateServers[math.random(1, #candidateServers)]
-    end
-    
-    if targetServer then
-        saveVisitedServer(targetServer.id)
-        print(string.format("[Server Hop] Chuyển đến server: %s (%d/%d người)", targetServer.id, targetServer.playing, targetServer.maxPlayers or 12))
-        
-        pcall(function() RS:WaitForChild("__ServerBrowser", 5):InvokeServer("teleport", targetServer.id) end)
-        task.wait(3)
-        pcall(function() TeleportService:TeleportToPlaceInstance(placeId, targetServer.id, LP) end)
-    else
-        print("[Server Hop] Không tìm thấy server mới, xóa cache và quét lại...")
-        pcall(function()
-            if writefile then writefile(visitedFile, HttpService:JSONEncode({[game.JobId] = os.time()})) end
-        end)
-        task.wait(2)
-        isHopping = false
-        hopRandomServer()
-    end
+    task.wait(5)
+    isHopping = false
 end
 
 -- Tự động thử lại khi teleport thất bại
@@ -421,7 +485,7 @@ TeleportService.TeleportInitFailed:Connect(function(player)
     if player == LP then
         isHopping = false
         task.wait(2)
-        hopRandomServer()
+        hopRandomServer(true)
     end
 end)
 
@@ -429,32 +493,40 @@ end)
 -- KIỂM TRA ĐIỀU KIỆN KATAKURI KHI VỪA VÀO SERVER & THEO DÕI SAU KHI DIỆT BOSS
 -- =========================================================================
 task.spawn(function()
-    task.wait(2.5) -- Chờ kết nối remote ổn định
+    task.wait(3.0) -- Chờ server và character kết nối đầy đủ
     
     if Config.AutoHopKatakuriServer then
+        print("[Katakuri Check] Đang kiểm tra số lượng quái Katakuri tại server này...")
         local checked = false
         local attempts = 0
         
-        while not checked and attempts < 10 and scriptID == _G.KatakuriFarmID do
+        while not checked and attempts < 8 and scriptID == _G.KatakuriFarmID do
             attempts = attempts + 1
-            local d = updateKataData()
+            local d = fetchKatakuriStatusDirect()
             
-            if d.Rem ~= nil or d.Open or d.Boss then
+            if d.IsValid then
                 checked = true
-                -- Ở lại nếu: Cổng đã mở, Đã có Boss, hoặc Đã diệt >= 300 con (còn lại <= 200 con)
-                local canStay = d.Open or (d.Boss ~= nil) or (d.Killed >= Config.MinKilledToStay) or (d.Rem and d.Rem <= (500 - Config.MinKilledToStay))
+                -- Điều kiện ở lại: Cổng đã mở, Đã có Boss, hoặc Đã diệt >= MinKilledToStay (mặc định 300 con)
+                local canStay = d.Open or (d.Boss ~= nil) or (d.Killed >= Config.MinKilledToStay)
                 
                 if canStay then
-                    print(string.format("✅ [Katakuri Check] Server đạt điều kiện (Đã diệt: %d/500, Còn lại: %s)! BẬT FARM.", d.Killed, tostring(d.Rem)))
+                    print(string.format("✅ [Katakuri Check] ĐẠT ĐIỀU KIỆN! Server đã diệt: %d/500 con (Còn lại: %d). Ở lại farm!", d.Killed, d.Rem))
                     Config.AutoFarm = true
                     saveSettings()
                 else
-                    print(string.format("⚠️ [Katakuri Check] Server còn phải đánh %s con (> %d con)! Đổi server khác...", tostring(d.Rem), 500 - Config.MinKilledToStay))
-                    hopRandomServer()
+                    print(string.format("⚠️ [Katakuri Check] Server CHƯA ĐẠT! Mới chỉ diệt: %d/500 con (< %d con yêu cầu). Đổi server khác ngay...", d.Killed, Config.MinKilledToStay))
+                    hopRandomServer(true)
                     return
                 end
+            else
+                task.wait(1.0)
             end
-            task.wait(1.0)
+        end
+        
+        -- Nếu thử nhiều lần không nhận được remote thì đổi server để tránh kẹt
+        if not checked and scriptID == _G.KatakuriFarmID then
+            print("⚠️ [Katakuri Check] Không lấy được trạng thái Katakuri, tự động đổi server...")
+            hopRandomServer(true)
         end
     end
 end)
@@ -465,14 +537,14 @@ task.spawn(function()
     while scriptID == _G.KatakuriFarmID do
         task.wait(1.5)
         if Config.AutoHopAfterKillBoss then
-            local d = updateKataData()
+            local d = fetchKatakuriStatusDirect()
             if d.Boss and d.Hp > 0 then
                 hadBossSpawned = true
             elseif hadBossSpawned and (not d.Boss or d.Hp <= 0) then
                 hadBossSpawned = false
                 print("🎉 [Katakuri Pro] ĐÃ DIỆT XONG KATAKURI! Bắt đầu chuyển sang server ngẫu nhiên mới...")
                 task.wait(2)
-                hopRandomServer()
+                hopRandomServer(true)
             end
         end
     end
@@ -991,7 +1063,7 @@ local function addDashboard(p)
     local rLbl = Instance.new("TextLabel", f)
     rLbl.Size, rLbl.Position = UDim2.new(1, -50, 0, 18), UDim2.new(0, 8, 0, 4)
     rLbl.BackgroundTransparency, rLbl.TextColor3, rLbl.Font, rLbl.TextSize = 1, Color3.fromRGB(255, 230, 80), Enum.Font.GothamBold, 10
-    rLbl.TextXAlignment, rLbl.Text = Enum.TextXAlignment.Left, "⚔️ Cần diệt: Đang tải... | Đã diệt: 0/500"
+    rLbl.TextXAlignment, rLbl.Text = Enum.TextXAlignment.Left, "⚔️ Đã diệt: 0/500 | Cần thêm: 500"
     
     local pLbl = Instance.new("TextLabel", f)
     pLbl.Size, pLbl.Position = UDim2.new(0, 45, 0, 18), UDim2.new(1, -50, 0, 4)
@@ -1027,7 +1099,7 @@ local function addDashboard(p)
             task.wait(1.5)
             pcall(function()
                 local d = updateKataData()
-                rLbl.Text = "⚔️ Cần: " .. tostring(d.Rem) .. " con | Đã diệt: " .. tostring(d.Killed) .. "/500"
+                rLbl.Text = "⚔️ Đã diệt: " .. tostring(d.Killed) .. "/500 | Cần thêm: " .. tostring(d.Rem)
                 pLbl.Text = tostring(d.Pct) .. "%"
                 fill.Size = UDim2.new(math.clamp(d.Killed / 500, 0, 1), 0, 1, 0)
                 
@@ -1042,7 +1114,7 @@ local function addDashboard(p)
                     kLbl.Text, kLbl.TextColor3 = "🔥 ĐANG ĐÁNH BOSS KATAKURI!", Color3.fromRGB(0, 255, 120)
                 elseif currentTargetName then
                     tLbl.Text, tLbl.TextColor3 = "🎯 Đang farm: " .. currentTargetName, Color3.fromRGB(150, 255, 180)
-                    kLbl.Text, kLbl.TextColor3 = d.Open and "✨ CỔNG ĐÃ MỞ SẴN SÀNG!" or "⏳ Cần thêm " .. d.Rem .. " con", d.Open and Color3.fromRGB(0, 220, 255) or Color3.fromRGB(255, 100, 100)
+                    kLbl.Text, kLbl.TextColor3 = d.Open and "✨ CỔNG ĐÃ MỞ SẴN SÀNG!" or "⏳ Đã diệt " .. d.Killed .. "/500 con", d.Open and Color3.fromRGB(0, 220, 255) or Color3.fromRGB(255, 100, 100)
                 else
                     tLbl.Text = "🎯 Đang tìm quái..."
                 end
@@ -1092,7 +1164,12 @@ addToggle(T5, "👻 Đi Xuyên Tường (NoClip)", "NoClip")
 addToggle(T6, "🌐 Tự Đổi Server Khi Chưa Đủ 300 Quái", "AutoHopKatakuriServer")
 addSlider(T6, "📊 Số Quái Đã Diệt Tối Thiểu Để Ở Lại", "MinKilledToStay", 100, 450, 25)
 addToggle(T6, "🔄 Đổi Server Sau Khi Diệt Xong Katakuri", "AutoHopAfterKillBoss")
-addButton(T6, "✈️ Đổi Sang Server Ngẫu Nhiên Ngay", Color3.fromRGB(0, 180, 255), function() hopRandomServer() end)
+addButton(T6, "✈️ Đổi Sang Server Ngẫu Nhiên Ngay", Color3.fromRGB(0, 180, 255), function()
+    isHopping = false
+    task.spawn(function()
+        hopRandomServer(true)
+    end)
+end)
 
 -- Tab 7: Cài Đặt
 addButton(T7, "💾 Lưu Cấu Hình (" .. saveFile .. ")", Color3.fromRGB(50, 200, 120), saveSettings)
