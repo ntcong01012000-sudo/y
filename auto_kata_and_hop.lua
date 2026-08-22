@@ -1,26 +1,27 @@
 --[[
     ========================================================================================
-    b🍩 BLOX FRUITS - KATAKURI ULTRA FARM & SMART SERVER HOPPER (PRO EDITION) 🍩
+    🍩 BLOX FRUITS - KATAKURI ULTRA FARM & SMART SERVER HOPPER (PRO EDITION) 🍩
     ========================================================================================
     ✨ TÍNH NĂNG ĐỘT PHÁ:
-      1. Tự Động Kiểm Tra & Lọc Server Thông Minh Khi Mới Vào:
-         - Phân tích chính xác số quái CÒN LẠI từ remote CakePrinceSpawner (Số trả về = Remaining).
-         - Tính toán chuẩn xác: Số đã diệt = 500 - Số còn lại.
-         - Nếu server CÒN PHẢI ĐÁNH HƠN 200 con (tức là đã diệt < 300 con) -> TỰ ĐỘNG ĐỔI SERVER NGAY.
+      1. Centralized Katakuri Tracker:
+         - 1 luồng duy nhất định kỳ 1.5s truy vấn CakePrinceSpawner, triệt tiêu 100% tình trạng spam/nghẽn RemoteFunction.
+         - Phân tích chính xác số quái CÒN LẠI (Remaining) & ĐÃ DIỆT (Killed = 500 - Remaining).
+      2. Tự Động Kiểm Tra & Lọc Server Thông Minh Khi Mới Vào:
+         - Nếu server CÒN PHẢI ĐÁNH HƠN 200 con (đã diệt < 300 con) -> TỰ ĐỘNG ĐỔI SERVER NGAY.
          - Nếu server ĐÃ DIỆT ÍT NHẤT 300/500 con (còn lại <= 200 con / Cổng mở / Có Boss) -> Ở lại và TỰ ĐỘNG BẬT FARM!
-      2. Tự Động Đổi Server Sau Khi Diệt Boss: Khi boss Katakuri chết -> Tự động chuyển ngay sang server ngẫu nhiên mới chưa vào.
-      3. Server Browser Random Hop Siêu Tốc:
+      3. Tự Động Đổi Server Sau Khi Diệt Boss: Khi boss Katakuri chết -> Tự động chuyển ngay sang server ngẫu nhiên mới chưa vào.
+      4. Server Browser Random Hop Siêu Tốc:
          - Quét song song Asc & Desc, lọc server còn chỗ (1-11 người).
          - Kết nối qua __ServerBrowser và TeleportToPlaceInstance với vòng lặp thử lần lượt từng server.
          - Dự phòng TeleportService:Teleport(placeId) đảm bảo 100% đổi server thành công.
-      4. Tự Động Trang Bị Melee (Cận chiến) liên tục trong suốt trận đánh.
-      5. Tự Động Bật Tộc V4 (Awakening - Phím Y) & Tộc V3 (Ability - Phím T) & Haki (Buso, Ken).
-      6. Triệt tiêu 100% trọng lực bằng BodyVelocity (9e9) - Lơ lửng 15 studs không bị rơi/giật và quái không thể đánh trúng.
-      7. Gom Quái Magnet 60x60 (SimulationRadius huge + ChangeState 11, 14 - Không bị đơ quái).
-      8. Đánh Siêu Nhanh x4 (100 CPS Multi Burst + Bypass Cooldown CombatFramework).
-      9. Tự Động Nhận Nhiệm Vụ (Auto Quest Beli & EXP).
-      10. Tự Động Chọn Phe Hải Tặc (Auto Set Team Pirates) & Lưu/Tải Cấu Hình theo tên người dùng.
-      11. Dashboard Katakuri chi tiết & GUI Icon trôi nổi (🍩) kéo thả tiện lợi trên PC/Mobile.
+      5. Tự Động Trang Bị Melee (Cận chiến) liên tục trong suốt trận đánh.
+      6. Tự Động Bật Tộc V4 (Awakening - Phím Y) & Tộc V3 (Ability - Phím T) & Haki (Buso, Ken).
+      7. Triệt tiêu 100% trọng lực bằng BodyVelocity (9e9) - Lơ lửng 15 studs không bị rơi/giật và quái không thể đánh trúng.
+      8. Gom Quái Magnet 60x60 (SimulationRadius huge + ChangeState 11, 14 - Không bị đơ quái).
+      9. Đánh Siêu Nhanh x4 (100 CPS Multi Burst + Bypass Cooldown CombatFramework).
+      10. Tự Động Nhận Nhiệm Vụ (Auto Quest Beli & EXP).
+      11. Tự Động Chọn Phe Hải Tặc (Auto Set Team Pirates) & Lưu/Tải Cấu Hình theo tên người dùng.
+      12. Dashboard Katakuri chi tiết & GUI Icon trôi nổi (🍩) kéo thả tiện lợi trên PC/Mobile.
     ========================================================================================
 --]]
 
@@ -187,7 +188,6 @@ local function TrangBiVuKhi()
     local hum = char.Humanoid
     local pref = Config.WeaponType or "Melee"
     
-    -- 1. Kiểm tra trên tay
     for _, tool in ipairs(char:GetChildren()) do
         if tool:IsA("Tool") then
             if pref == "Melee" and (tool.ToolTip == "Melee" or tool:FindFirstChild("CombatScript") or tool:FindFirstChild("Melee")) then
@@ -198,7 +198,6 @@ local function TrangBiVuKhi()
         end
     end
     
-    -- 2. Tìm trong Backpack
     local bp = LP:FindFirstChild("Backpack")
     if bp then
         for _, tool in ipairs(bp:GetChildren()) do
@@ -332,71 +331,63 @@ local function isMirrorOpen()
 end
 
 -- =========================================================================
--- HÀM LẤY CHÍNH XÁC TRẠNG THÁI KATAKURI TỪ GAME BLOX FRUITS
--- LƯU Ý: Phản hồi từ CakePrinceSpawner là số lượng quái CÒN LẠI cần phải đánh (Remaining)
--- Số đã diệt (Killed) = 500 - Số còn lại (Remaining)
+-- HỆ THỐNG THEO DÕI KATAKURI ĐỒNG BỘ (CENTRALIZED TRACKER - 1 LUỒNG DUY NHẤT)
 -- =========================================================================
-local function fetchKatakuriStatusDirect()
-    local res = nil
-    pcall(function()
-        res = CommF:InvokeServer("CakePrinceSpawner")
-    end)
-    local boss = getActiveBoss()
-    local open = isMirrorOpen()
-    
-    local remaining = 500
-    local killed = 0
-    local rawText = type(res) == "string" and res or ""
-    
-    if type(res) == "string" then
-        local text = res:lower()
-        if text:find("open") or text:find("spawn") or text:find("arrived") then
-            open = true
-            remaining = 0
-            killed = 500
-        else
-            -- Blox Fruits trả về số quái CÒN LẠI cần phải đánh
-            local num = tonumber(res:match("%d+"))
-            if num then
-                if num > 500 then num = 500 end
-                remaining = num
-                killed = math.clamp(500 - remaining, 0, 500)
-            end
-        end
-    elseif open then
-        remaining = 0
-        killed = 500
-    end
-    
-    local bHum = boss and boss:FindFirstChildOfClass("Humanoid")
-    local bHp = bHum and bHum.Health > 0 and math.floor(bHum.Health) or 0
-    local bMaxHp = bHum and bHum.MaxHealth > 0 and math.floor(bHum.MaxHealth) or 0
-    
-    return {
-        Raw = rawText,
-        Rem = remaining,
-        Killed = killed,
-        Pct = math.floor((killed / 500) * 100),
-        Open = open or (remaining == 0),
-        Boss = boss and boss.Name or (open and "Cake Prince / Dough King" or nil),
-        Hp = bHp,
-        MaxHp = bMaxHp,
-        IsValid = (type(res) == "string" and res ~= "") or open or (boss ~= nil)
-    }
-end
+local kataData = {
+    Rem = 500,
+    Killed = 0,
+    Pct = 0,
+    Open = false,
+    Boss = nil,
+    Hp = 0,
+    MaxHp = 0,
+    HasData = false
+}
 
-local cachedKataData = {Rem = 500, Killed = 0, Pct = 0, Open = false, Boss = nil, Hp = 0, MaxHp = 0}
-local lastKataCheck = 0
-local function updateKataData()
-    if tick() - lastKataCheck < 1.5 then return cachedKataData end
-    lastKataCheck = tick()
-    task.spawn(function()
-        local d = fetchKatakuriStatusDirect()
-        if d.IsValid then
-            cachedKataData = d
-        end
-    end)
-    return cachedKataData
+task.spawn(function()
+    while scriptID == _G.KatakuriFarmID do
+        pcall(function()
+            local res = CommF:InvokeServer("CakePrinceSpawner")
+            local boss = getActiveBoss()
+            local open = isMirrorOpen()
+            local bHum = boss and boss:FindFirstChildOfClass("Humanoid")
+            
+            local remaining = 500
+            local killed = 0
+            
+            if type(res) == "string" then
+                local text = res:lower()
+                if text:find("open") or text:find("spawn") or text:find("arrived") then
+                    open = true
+                    remaining = 0
+                    killed = 500
+                else
+                    local num = tonumber(res:match("%d+"))
+                    if num then
+                        remaining = math.clamp(num, 0, 500)
+                        killed = math.clamp(500 - remaining, 0, 500)
+                    end
+                end
+            elseif open then
+                remaining = 0
+                killed = 500
+            end
+            
+            kataData.Rem = remaining
+            kataData.Killed = killed
+            kataData.Pct = math.floor((killed / 500) * 100)
+            kataData.Open = open or (remaining == 0)
+            kataData.Boss = boss and boss.Name or (open and "Cake Prince / Dough King" or nil)
+            kataData.Hp = bHum and bHum.Health > 0 and math.floor(bHum.Health) or 0
+            kataData.MaxHp = bHum and bHum.MaxHealth > 0 and math.floor(bHum.MaxHealth) or 0
+            kataData.HasData = (type(res) == "string") or open or (boss ~= nil)
+        end)
+        task.wait(1.5)
+    end
+end)
+
+local function getKataData()
+    return kataData
 end
 
 -- =========================================================================
@@ -486,36 +477,23 @@ task.spawn(function()
     task.wait(3.0)
     
     if Config.AutoHopKatakuriServer then
-        print("[Katakuri Check] Đang kiểm tra số lượng quái Katakuri tại server này...")
-        local checked = false
-        local attempts = 0
-        
-        while not checked and attempts < 8 and scriptID == _G.KatakuriFarmID do
-            attempts = attempts + 1
-            local d = fetchKatakuriStatusDirect()
-            
-            if d.IsValid then
-                checked = true
-                -- Số quái còn lại tối đa cho phép để ở lại farm (Mặc định: 500 - 300 = 200 con)
-                local maxRemainingAllowed = 500 - (Config.MinKilledToStay or 300)
-                local canStay = d.Open or (d.Boss ~= nil) or (d.Rem <= maxRemainingAllowed) or (d.Killed >= Config.MinKilledToStay)
-                
-                if canStay then
-                    print(string.format("✅ [Katakuri Check] ĐẠT YÊU CẦU! Server đã diệt %d/500 con (Chỉ còn %d con nữa). Ở lại farm!", d.Killed, d.Rem))
-                    Config.AutoFarm = true
-                    saveSettings()
-                else
-                    print(string.format("⚠️ [Katakuri Check] CHƯA ĐẠT! Server mới diệt %d/500 con (Còn phải đánh tận %d con nữa > %d). Đổi server khác ngay...", d.Killed, d.Rem, maxRemainingAllowed))
-                    hopRandomServer(true)
-                    return
-                end
-            else
-                task.wait(1.0)
-            end
+        print("[Katakuri Check] Đang chờ đồng bộ dữ liệu Katakuri từ server...")
+        local waitCount = 0
+        while not kataData.HasData and waitCount < 10 and scriptID == _G.KatakuriFarmID do
+            waitCount = waitCount + 1
+            task.wait(0.5)
         end
         
-        if not checked and scriptID == _G.KatakuriFarmID then
-            print("⚠️ [Katakuri Check] Không lấy được trạng thái Katakuri, tự động đổi server...")
+        local d = getKataData()
+        local maxRemainingAllowed = 500 - (Config.MinKilledToStay or 300)
+        local canStay = d.Open or (d.Boss ~= nil) or (d.Rem <= maxRemainingAllowed) or (d.Killed >= Config.MinKilledToStay)
+        
+        if canStay then
+            print(string.format("✅ [Katakuri Check] ĐẠT YÊU CẦU! Server đã diệt %d/500 con (Chỉ còn %d con nữa). Ở lại farm!", d.Killed, d.Rem))
+            Config.AutoFarm = true
+            saveSettings()
+        else
+            print(string.format("⚠️ [Katakuri Check] CHƯA ĐẠT! Server mới diệt %d/500 con (Còn phải đánh tận %d con nữa > %d). Đổi server khác ngay...", d.Killed, d.Rem, maxRemainingAllowed))
             hopRandomServer(true)
         end
     end
@@ -527,7 +505,7 @@ task.spawn(function()
     while scriptID == _G.KatakuriFarmID do
         task.wait(1.5)
         if Config.AutoHopAfterKillBoss then
-            local d = fetchKatakuriStatusDirect()
+            local d = getKataData()
             if d.Boss and d.Hp > 0 then
                 hadBossSpawned = true
             elseif hadBossSpawned and (not d.Boss or d.Hp <= 0) then
@@ -1053,7 +1031,7 @@ local function addDashboard(p)
     local rLbl = Instance.new("TextLabel", f)
     rLbl.Size, rLbl.Position = UDim2.new(1, -50, 0, 18), UDim2.new(0, 8, 0, 4)
     rLbl.BackgroundTransparency, rLbl.TextColor3, rLbl.Font, rLbl.TextSize = 1, Color3.fromRGB(255, 230, 80), Enum.Font.GothamBold, 10
-    rLbl.TextXAlignment, rLbl.Text = Enum.TextXAlignment.Left, "⚔️ Đã diệt: 0/500 | Cần thêm: 500"
+    rLbl.TextXAlignment, rLbl.Text = Enum.TextXAlignment.Left, "⚔️ Đang tải dữ liệu Katakuri..."
     
     local pLbl = Instance.new("TextLabel", f)
     pLbl.Size, pLbl.Position = UDim2.new(0, 45, 0, 18), UDim2.new(1, -50, 0, 4)
@@ -1086,9 +1064,9 @@ local function addDashboard(p)
     
     task.spawn(function()
         while scriptID == _G.KatakuriFarmID and f.Parent do
-            task.wait(1.5)
+            task.wait(1.0)
             pcall(function()
-                local d = updateKataData()
+                local d = getKataData()
                 rLbl.Text = "⚔️ Đã diệt: " .. tostring(d.Killed) .. "/500 | Cần thêm: " .. tostring(d.Rem)
                 pLbl.Text = tostring(d.Pct) .. "%"
                 fill.Size = UDim2.new(math.clamp(d.Killed / 500, 0, 1), 0, 1, 0)
