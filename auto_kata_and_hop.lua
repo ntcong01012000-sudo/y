@@ -81,10 +81,10 @@ local Config = {
     BlacklistDuration = 120,       -- Thời gian tạm dừng farm loại quái đơ (120s = 2 phút)
     
     AutoBring = true,
-    BringRadius = 300,
+    BringRadius = 250,
     BringSmooth = true,            -- Gom quái bay dần dần mượt mà, không giật
     BringSpeed = 150,              -- Tốc độ kéo quái bay (studs/s)
-    MaxLeashDistance = 180,        -- Giới hạn khoảng cách tối đa so với Spawn Point của quái
+    MaxLeashDistance = 250,        -- Giới hạn khoảng cách tối đa so với Spawn Point của quái
     AutoReturnToSpawn = true,      -- Tự động đưa quái về Spawn Point nếu quá xa hoặc bị kẹt/blacklist
     FastAttack = true,
     AttackMultiplier = 4,
@@ -334,32 +334,66 @@ end
 local function GetNextUnmasteredSword()
     local targetMas = Config.TargetMastery or 600
     
-    -- Ưu tiên quét các kiếm đang có trong Balo / Nhân vật trước
-    for _, sName in ipairs(MasterSwordList) do
-        if sName ~= "Auto Next Unmastered" then
-            local tool, loc, actName = FindToolAnywhere(sName)
-            if tool then
-                local mas = GetToolMastery(tool)
-                if mas < targetMas then
-                    return actName or sName, mas
-                end
-            end
-        end
-    end
-
-    -- Quét toàn bộ kho đồ từ Server
     local ok, inv = pcall(function() return CommF:InvokeServer("getInventory") end)
+    local allSwords = {}
+    local unmasteredSwords = {}
+    
     if ok and type(inv) == "table" then
         for _, item in ipairs(inv) do
             if type(item) == "table" and item.Type == "Sword" then
-                local mas = tonumber(item.Mastery) or 0
-                if mas < targetMas then
-                    return item.Name, mas
+                -- Lấy live mastery thực tế trong Character/Backpack trước để chống lag/outdate từ server cache
+                local liveMas = GetToolMastery(item.Name)
+                if liveMas == 0 and item.Mastery then
+                    liveMas = tonumber(item.Mastery) or 0
+                end
+                
+                table.insert(allSwords, { Name = item.Name, Mastery = liveMas })
+                if liveMas < targetMas then
+                    table.insert(unmasteredSwords, { Name = item.Name, Mastery = liveMas })
                 end
             end
         end
     end
-
+    
+    -- 1. Nếu có kiếm chưa đạt mốc TargetMastery: Chọn theo thứ tự ưu tiên trong MasterSwordList
+    if #unmasteredSwords > 0 then
+        for _, sName in ipairs(MasterSwordList) do
+            if sName ~= "Auto Next Unmastered" then
+                for _, s in ipairs(unmasteredSwords) do
+                    if s.Name == sName or (SwordAliases[sName] and table.find(SwordAliases[sName], s.Name)) then
+                        return s.Name, s.Mastery
+                    end
+                end
+            end
+        end
+        -- Fallback: Trả về kiếm chưa max đầu tiên tìm thấy
+        return unmasteredSwords[1].Name, unmasteredSwords[1].Mastery
+    end
+    
+    -- 2. Nếu TẤT CẢ kiếm đã đạt mốc TargetMastery:
+    -- Ưu tiên sử dụng Cursed Dual Katana (CDK) để farm nhanh
+    for _, s in ipairs(allSwords) do
+        if s.Name == "Cursed Dual Katana" then
+            return "Cursed Dual Katana", s.Mastery
+        end
+    end
+    
+    -- Nếu không có CDK, sử dụng kiếm đầu tiên có trong MasterSwordList mà người chơi sở hữu
+    for _, sName in ipairs(MasterSwordList) do
+        if sName ~= "Auto Next Unmastered" then
+            for _, s in ipairs(allSwords) do
+                if s.Name == sName or (SwordAliases[sName] and table.find(SwordAliases[sName], s.Name)) then
+                    return s.Name, s.Mastery
+                end
+            end
+        end
+    end
+    
+    -- Fallback cuối cùng: Trả về kiếm đầu tiên trong túi đồ
+    if #allSwords > 0 then
+        return allSwords[1].Name, allSwords[1].Mastery
+    end
+    
     return nil, nil
 end
 
@@ -386,21 +420,17 @@ local function TrangBiVuKhi()
             local curMas = GetToolMastery(currentSword)
             currentFarmingSwordName = currentSword.Name
 
-            if curMas >= targetMas and Config.AutoSwitchSwordMastery then
-                -- KIẾM ĐÃ ĐẠT 600 MASTERY => TỰ ĐỘNG ĐỔI SANG KIẾM TIẾP THEO
+            -- Nếu bật tự động đổi kiếm, liên tục kiểm tra và đổi nếu cần thiết (kể cả khi đã max hết)
+            if Config.AutoSwitchSwordMastery or Config.SelectedSword == "Auto Next Unmastered" then
                 local nextSword, nextMas = GetNextUnmasteredSword()
                 if nextSword and nextSword ~= currentSword.Name then
-                    print(string.format("🗡️ [AutoSword] Kiếm [%s] đã đạt %d/%d Mastery! Đang đổi sang [%s] (%d/600)...", currentSword.Name, curMas, targetMas, nextSword, nextMas or 0))
+                    print(string.format("🗡️ [AutoSword] Đang đổi kiếm tối ưu từ [%s] (%d) sang [%s]...", currentSword.Name, curMas, nextSword))
                     local eq = EquipSpecificSword(nextSword)
                     if eq then return eq end
-                else
-                    -- Không còn kiếm nào chưa max -> Giữ kiếm hiện tại
-                    return currentSword
                 end
-            else
-                -- CHƯA LÊN 600 MASTERY => TIẾP TỤC FARM BÌNH THƯỜNG VỚI KIẾM NÀY
-                return currentSword
             end
+            
+            return currentSword
         else
             -- Chưa cầm kiếm nào trên tay -> Bắt đầu equip kiếm được chọn hoặc kiếm chưa max
             local targetSwordName = Config.SelectedSword
@@ -866,8 +896,8 @@ task.spawn(function()
         if workspace:FindFirstChild("Enemies") then
             local targetPos = currentFarmCFrame and currentFarmCFrame.Position
             local pullSpeed = Config.BringSpeed or 150
-            local maxLeash = Config.MaxLeashDistance or 180
-            local bringRadius = Config.BringRadius or 300
+            local maxLeash = Config.MaxLeashDistance or 250
+            local bringRadius = Config.BringRadius or 250
             
             for _, v in ipairs(workspace.Enemies:GetChildren()) do
                 if isAlive(v) and not v:GetAttribute("IsBoat") and isCakeMob(v) and not v.Name:find("Prince") and not v.Name:find("King") then
@@ -886,7 +916,8 @@ task.spawn(function()
                         local distToTarget = targetPos and (vr.Position - targetPos).Magnitude or 9999
                         local spawnToTargetDist = (targetPos and spawnPos) and (spawnPos - targetPos).Magnitude or 9999
                         
-                        local shouldPull = canBring and not isBlacklist and (v ~= activeAttackEntity) and (distToTarget <= bringRadius) and (spawnToTargetDist <= maxLeash)
+                        -- Chỉ gom các quái cùng tên với mục tiêu chính trong bán kính 250 studs
+                        local shouldPull = canBring and not isBlacklist and (v ~= activeAttackEntity) and (activeAttackEntity and v.Name == activeAttackEntity.Name) and (distToTarget <= bringRadius) and (spawnToTargetDist <= maxLeash)
                         
                         if shouldPull then
                             -- Quái trong tầm gom hợp lệ: Kéo bay dần dần (Smooth Gradual Pull)
