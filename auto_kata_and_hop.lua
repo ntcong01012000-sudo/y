@@ -22,7 +22,7 @@
       6. Tự Động Trang Bị Melee (Cận chiến) liên tục trong suốt trận đánh.
       7. Tự Động Bật Tộc V4 (Awakening - Phím Y) & Tộc V3 (Ability - Phím T) & Haki (Buso, Ken).
       8. Triệt tiêu 100% trọng lực bằng BodyVelocity (9e9) - Lơ lửng 15 studs không bị rơi/giật và quái không thể đánh trúng.
-      9. Gom Quái Magnet 60x60 (SimulationRadius huge + ChangeState 11, 14 - Không bị đơ quái).
+      9. Gom Quái Bay Dần Dần & Tự Trả Về Spawn (Smooth Pull + Spawn Point Tracking + Tự Trả Về Spawn Chống Đơ/Lag 100%).
       10. Đánh Siêu Nhanh x4 (100 CPS Multi Burst + Bypass Cooldown CombatFramework).
       11. Tự Động Nhận Nhiệm Vụ (Auto Quest Beli & EXP).
       12. Tự Động Chọn Phe Hải Tặc (Auto Set Team Pirates) & Lưu/Tải Cấu Hình theo tên người dùng.
@@ -82,12 +82,19 @@ local Config = {
     
     AutoBring = true,
     BringRadius = 300,
+    BringSmooth = true,            -- Gom quái bay dần dần mượt mà, không giật
+    BringSpeed = 150,              -- Tốc độ kéo quái bay (studs/s)
+    MaxLeashDistance = 180,        -- Giới hạn khoảng cách tối đa so với Spawn Point của quái
+    AutoReturnToSpawn = true,      -- Tự động đưa quái về Spawn Point nếu quá xa hoặc bị kẹt/blacklist
     FastAttack = true,
     AttackMultiplier = 4,
     AutoQuest = true,
     AutoSpawnBoss = true,
     AutoKillBossOnly = false,
-    WeaponType = "Melee",          -- Mặc định luôn tự động cầm Melee
+    WeaponType = "Melee",          -- Mặc định luôn tự động cầm Melee (Melee, Sword, Blox Fruit, Gun)
+    AutoSwitchSwordMastery = false,-- Tự động đổi kiếm khi kiếm hiện tại đạt 600 Mastery
+    TargetMastery = 600,           -- Mốc Mastery để đổi kiếm (100 - 600)
+    SelectedSword = "Auto Next Unmastered", -- Kiếm người dùng chọn để farm ("Auto Next Unmastered" hoặc tên kiếm)
     AutoBuso = true,
     AutoKen = true,
     AutoRaceV3 = true,
@@ -215,13 +222,214 @@ local function blacklistMob(mob, duration)
     end
 end
 
--- ==================== TỰ ĐỘNG TRANG BỊ MELEE / VŨ KHÍ ====================
+-- ==================== HỆ THỐNG VŨ KHÍ & AUTO MASTERY SWORD ====================
+local MasterSwordList = {
+    "Auto Next Unmastered",
+    "Hallow Scythe", "True Triple Katana", "Cursed Dual Katana", "Rengoku", "Bisento",
+    "Midnight Blade", "Koko", "Pole (2nd Form)", "Canvander", "Yama", "Tushita",
+    "Shark Anchor", "Fox Lamp", "Spikey Trident", "Dark Dagger", "Buddy Sword",
+    "Saishi", "Oroshi", "Shizu", "Saber", "Pole (1st Form)", "Dragonheart",
+    "Trident", "Longsword", "Flail", "Gravity Blade", "Pipe", "Wardens Sword",
+    "Soul Cane", "Dual-Headed Blade", "Dragon Trident", "Twin Hooks",
+    "Triple Katana", "Shark Saw", "Iron Mace", "Dual Katana", "Katana", "Cutlass"
+}
+
+local SwordAliases = {
+    ["Wardens Sword"] = {"Warden's Sword", "Wardens Sword"},
+    ["Canvander"] = {"Canvander", "Cavander"},
+    ["cutlass"] = {"Cutlass", "cutlass"},
+    ["Gravity Blade"] = {"Gravity Blade", "Gravity Cane"},
+    ["Saishi"] = {"Saishi", "Sashi"},
+    ["Shizu"] = {"Shizu", "Shisui"}
+}
+
+local currentFarmingSwordName = nil
+local lastSwordLoadTick = 0
+
+-- Đọc Mastery của Tool (Kiểm tra trong Character -> Backpack -> Inventory)
+local function GetToolMastery(toolNameOrInstance)
+    if typeof(toolNameOrInstance) == "Instance" and toolNameOrInstance:IsA("Tool") then
+        local lvl = toolNameOrInstance:FindFirstChild("Level")
+        if lvl and lvl:IsA("ValueBase") then return tonumber(lvl.Value) or 0 end
+        toolNameOrInstance = toolNameOrInstance.Name
+    end
+    local name = tostring(toolNameOrInstance or "")
+    if name == "" then return 0 end
+
+    local char = LP.Character
+    if char and char:FindFirstChild(name) and char[name]:FindFirstChild("Level") then
+        return tonumber(char[name].Level.Value) or 0
+    end
+    local bp = LP:FindFirstChild("Backpack")
+    if bp and bp:FindFirstChild(name) and bp[name]:FindFirstChild("Level") then
+        return tonumber(bp[name].Level.Value) or 0
+    end
+    return 0
+end
+
+-- Tìm Tool an toàn ở cả Character và Backpack
+local function FindToolAnywhere(swordName)
+    local char = LP.Character
+    local bp = LP:FindFirstChild("Backpack")
+    local namesToTry = { swordName }
+    if SwordAliases[swordName] then
+        for _, alias in ipairs(SwordAliases[swordName]) do
+            table.insert(namesToTry, alias)
+        end
+    end
+
+    for _, name in ipairs(namesToTry) do
+        if char and char:FindFirstChild(name) then return char[name], "Character", name end
+        if bp and bp:FindFirstChild(name) then return bp[name], "Backpack", name end
+    end
+    return nil, nil, swordName
+end
+
+-- Load kiếm từ kho server vào Backpack & Cầm lên tay
+local function EquipSpecificSword(swordName)
+    if not swordName or swordName == "" or swordName == "Auto Next Unmastered" then return nil end
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local bp = LP:FindFirstChild("Backpack")
+    if not char or not hum or not bp then return nil end
+
+    -- 1. Nếu kiếm đã có sẵn trong Character hoặc Backpack
+    local tool, loc, actualName = FindToolAnywhere(swordName)
+    if tool then
+        if tool.Parent == bp then
+            hum:EquipTool(tool)
+            task.wait(0.15)
+        end
+        currentFarmingSwordName = actualName
+        return tool
+    end
+
+    -- 2. Chưa có trong Balo/Nhân vật -> Load từ Inventory Server qua CommF_
+    if tick() - lastSwordLoadTick > 1.5 then
+        lastSwordLoadTick = tick()
+        local namesToTry = { swordName }
+        if SwordAliases[swordName] then
+            for _, alias in ipairs(SwordAliases[swordName]) do table.insert(namesToTry, alias) end
+        end
+
+        for _, tryName in ipairs(namesToTry) do
+            pcall(function() CommF:InvokeServer("LoadItem", tryName) end)
+            local start = tick()
+            while tick() - start < 0.8 do
+                local loaded = bp:FindFirstChild(tryName) or char:FindFirstChild(tryName)
+                if loaded then
+                    if loaded.Parent == bp then hum:EquipTool(loaded) end
+                    currentFarmingSwordName = tryName
+                    return loaded
+                end
+                task.wait(0.08)
+            end
+        end
+    end
+
+    return nil
+end
+
+-- Tìm kiếm tiếp theo có Mastery < TargetMastery (mặc định 600)
+local function GetNextUnmasteredSword()
+    local targetMas = Config.TargetMastery or 600
+    
+    -- Ưu tiên quét các kiếm đang có trong Balo / Nhân vật trước
+    for _, sName in ipairs(MasterSwordList) do
+        if sName ~= "Auto Next Unmastered" then
+            local tool, loc, actName = FindToolAnywhere(sName)
+            if tool then
+                local mas = GetToolMastery(tool)
+                if mas < targetMas then
+                    return actName or sName, mas
+                end
+            end
+        end
+    end
+
+    -- Quét toàn bộ kho đồ từ Server
+    local ok, inv = pcall(function() return CommF:InvokeServer("getInventory") end)
+    if ok and type(inv) == "table" then
+        for _, item in ipairs(inv) do
+            if type(item) == "table" and item.Type == "Sword" then
+                local mas = tonumber(item.Mastery) or 0
+                if mas < targetMas then
+                    return item.Name, mas
+                end
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+-- ==================== HÀM TRANG BỊ VŨ KHÍ TỰ ĐỘNG ====================
 local function TrangBiVuKhi()
     local char = LP.Character
     if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return nil end
     local hum = char.Humanoid
+
+    -- [CHẾ ĐỘ 1: AUTO MASTERY SWORD / WEAPON TYPE LÀ SWORD]
+    if Config.AutoSwitchSwordMastery or Config.WeaponType == "Sword" then
+        local targetMas = Config.TargetMastery or 600
+        
+        -- 1. Tìm kiếm hiện đang cầm trên tay
+        local currentSword = nil
+        for _, t in ipairs(char:GetChildren()) do
+            if t:IsA("Tool") and (t.ToolTip == "Sword" or (t:FindFirstChild("ToolTip") and t.ToolTip.Value == "Sword")) then
+                currentSword = t
+                break
+            end
+        end
+
+        if currentSword then
+            local curMas = GetToolMastery(currentSword)
+            currentFarmingSwordName = currentSword.Name
+
+            if curMas >= targetMas and Config.AutoSwitchSwordMastery then
+                -- KIẾM ĐÃ ĐẠT 600 MASTERY => TỰ ĐỘNG ĐỔI SANG KIẾM TIẾP THEO
+                local nextSword, nextMas = GetNextUnmasteredSword()
+                if nextSword and nextSword ~= currentSword.Name then
+                    print(string.format("🗡️ [AutoSword] Kiếm [%s] đã đạt %d/%d Mastery! Đang đổi sang [%s] (%d/600)...", currentSword.Name, curMas, targetMas, nextSword, nextMas or 0))
+                    local eq = EquipSpecificSword(nextSword)
+                    if eq then return eq end
+                else
+                    -- Không còn kiếm nào chưa max -> Giữ kiếm hiện tại
+                    return currentSword
+                end
+            else
+                -- CHƯA LÊN 600 MASTERY => TIẾP TỤC FARM BÌNH THƯỜNG VỚI KIẾM NÀY
+                return currentSword
+            end
+        else
+            -- Chưa cầm kiếm nào trên tay -> Bắt đầu equip kiếm được chọn hoặc kiếm chưa max
+            local targetSwordName = Config.SelectedSword
+            if not targetSwordName or targetSwordName == "Auto Next Unmastered" or Config.AutoSwitchSwordMastery then
+                local nextS = GetNextUnmasteredSword()
+                targetSwordName = nextS or (Config.SelectedSword ~= "Auto Next Unmastered" and Config.SelectedSword) or "Saber"
+            end
+
+            if targetSwordName and targetSwordName ~= "" and targetSwordName ~= "Auto Next Unmastered" then
+                local eq = EquipSpecificSword(targetSwordName)
+                if eq then return eq end
+            end
+
+            -- Fallback nếu không load được kiếm cụ thể: lấy bất kỳ kiếm nào trong Backpack
+            local bp = LP:FindFirstChild("Backpack")
+            if bp then
+                for _, tool in ipairs(bp:GetChildren()) do
+                    if tool:IsA("Tool") and (tool.ToolTip == "Sword" or (tool:FindFirstChild("ToolTip") and tool.ToolTip.Value == "Sword")) then
+                        hum:EquipTool(tool)
+                        currentFarmingSwordName = tool.Name
+                        return tool
+                    end
+                end
+            end
+        end
+    end
+
+    -- [CHẾ ĐỘ 2: MẶC ĐỊNH MELEE HOẶC LOẠI VŨ KHÍ KHÁC]
     local pref = Config.WeaponType or "Melee"
-    
     for _, tool in ipairs(char:GetChildren()) do
         if tool:IsA("Tool") then
             if pref == "Melee" and (tool.ToolTip == "Melee" or tool:FindFirstChild("CombatScript") or tool:FindFirstChild("Melee")) then
@@ -611,10 +819,41 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- ==================== GOM QUÁI MAGNET 60x60 ====================
+-- ==================== HỆ THỐNG GOM QUÁI MƯỢT & THEO DÕI SPAWN POINT ====================
+local mobSpawnPoints = {}
+
+local function trackMobSpawn(mob)
+    if not mob or mobSpawnPoints[mob] then return end
+    pcall(function()
+        local hrp = mob:FindFirstChild("HumanoidRootPart") or mob.PrimaryPart
+        if hrp then
+            mobSpawnPoints[mob] = hrp.Position
+        end
+    end)
+end
+
+if workspace:FindFirstChild("Enemies") then
+    for _, mob in ipairs(workspace.Enemies:GetChildren()) do
+        trackMobSpawn(mob)
+    end
+    workspace.Enemies.ChildAdded:Connect(function(mob)
+        task.wait(0.1)
+        trackMobSpawn(mob)
+    end)
+    workspace.Enemies.ChildRemoved:Connect(function(mob)
+        mobSpawnPoints[mob] = nil
+        mobBlacklist[mob] = nil
+    end)
+end
+
 task.spawn(function()
+    local lastBringTick = tick()
     while scriptID == _G.KatakuriFarmID do
-        task.wait()
+        task.wait(0.03)
+        local now = tick()
+        local dt = math.clamp(now - lastBringTick, 0.01, 0.1)
+        lastBringTick = now
+        
         pcall(function()
             if setscriptable then setscriptable(LP, "SimulationRadius", true) end
             if sethiddenproperty then
@@ -624,22 +863,82 @@ task.spawn(function()
             LP.SimulationRadius = math.huge
         end)
         
-        if Config.AutoFarm and Config.AutoBring and currentFarmCFrame and workspace:FindFirstChild("Enemies") then
-            pcall(function()
-                for _, v in ipairs(workspace.Enemies:GetChildren()) do
-                    if isAlive(v) and not v:GetAttribute("IsBoat") and isCakeMob(v) and not isBlacklisted(v) and not v.Name:find("Prince") and not v.Name:find("King") then
-                        local vr, vh, head = v:FindFirstChild("HumanoidRootPart"), v:FindFirstChildOfClass("Humanoid"), v:FindFirstChild("Head")
-                        if vr and vh and (vr.Position - currentFarmCFrame.Position).Magnitude <= Config.BringRadius then
-                            vr.Size = Vector3.new(60, 60, 60)
-                            vr.Transparency = 1
-                            vr.CanCollide = false
-                            if head then head.CanCollide = false end
-                            pcall(function() vh:ChangeState(11) vh:ChangeState(14) end)
-                            vr.CFrame = currentFarmCFrame
+        if workspace:FindFirstChild("Enemies") then
+            local targetPos = currentFarmCFrame and currentFarmCFrame.Position
+            local pullSpeed = Config.BringSpeed or 150
+            local maxLeash = Config.MaxLeashDistance or 180
+            local bringRadius = Config.BringRadius or 300
+            
+            for _, v in ipairs(workspace.Enemies:GetChildren()) do
+                if isAlive(v) and not v:GetAttribute("IsBoat") and isCakeMob(v) and not v.Name:find("Prince") and not v.Name:find("King") then
+                    local vr = v:FindFirstChild("HumanoidRootPart") or v.PrimaryPart
+                    local vh = v:FindFirstChildOfClass("Humanoid")
+                    
+                    if vr and vh and vh.Health > 0 then
+                        if not mobSpawnPoints[v] then
+                            mobSpawnPoints[v] = vr.Position
+                        end
+                        local spawnPos = mobSpawnPoints[v]
+                        
+                        -- Điều kiện gom quái
+                        local canBring = Config.AutoFarm and Config.AutoBring and targetPos ~= nil
+                        local isBlacklist = isBlacklisted(v)
+                        local distToTarget = targetPos and (vr.Position - targetPos).Magnitude or 9999
+                        local spawnToTargetDist = (targetPos and spawnPos) and (spawnPos - targetPos).Magnitude or 9999
+                        
+                        local shouldPull = canBring and not isBlacklist and (v ~= activeAttackEntity) and (distToTarget <= bringRadius) and (spawnToTargetDist <= maxLeash)
+                        
+                        if shouldPull then
+                            -- Quái trong tầm gom hợp lệ: Kéo bay dần dần (Smooth Gradual Pull)
+                            pcall(function()
+                                vr.CanCollide = false
+                                for _, part in ipairs(v:GetChildren()) do
+                                    if part:IsA("BasePart") then part.CanCollide = false end
+                                end
+                                
+                                if Config.BringSmooth then
+                                    if distToTarget > 4 then
+                                        local moveDir = (targetPos - vr.Position).Unit
+                                        local moveStep = math.min(distToTarget, pullSpeed * dt)
+                                        vr.CFrame = CFrame.new(vr.Position + moveDir * moveStep, targetPos)
+                                    else
+                                        vr.CFrame = CFrame.new(targetPos)
+                                    end
+                                else
+                                    vr.CFrame = CFrame.new(targetPos)
+                                end
+                                
+                                vh.WalkSpeed = 0
+                                vh.JumpPower = 0
+                            end)
+                        else
+                            -- Nếu quái vượt quá khoảng cách cho phép hoặc bị kẹt/blacklist -> Tự động đưa về Spawn Point mượt mà
+                            if Config.AutoReturnToSpawn and spawnPos and (v ~= activeAttackEntity) then
+                                local distToSpawn = (vr.Position - spawnPos).Magnitude
+                                if distToSpawn > 5 then
+                                    pcall(function()
+                                        for _, part in ipairs(v:GetChildren()) do
+                                            if part:IsA("BasePart") then part.CanCollide = false end
+                                        end
+                                        local returnDir = (spawnPos - vr.Position).Unit
+                                        local returnStep = math.min(distToSpawn, pullSpeed * dt)
+                                        vr.CFrame = CFrame.new(vr.Position + returnDir * returnStep)
+                                    end)
+                                elseif distToSpawn <= 5 and distToSpawn > 0.5 then
+                                    pcall(function()
+                                        vr.CFrame = CFrame.new(spawnPos)
+                                        for _, part in ipairs(v:GetChildren()) do
+                                            if part:IsA("BasePart") then part.CanCollide = true end
+                                        end
+                                        vh.WalkSpeed = 16
+                                        vh.JumpPower = 50
+                                    end)
+                                end
+                            end
                         end
                     end
                 end
-            end)
+            end
         end
     end
 end)
@@ -778,9 +1077,6 @@ task.spawn(function()
                     local bh = boss:FindFirstChildOfClass("Humanoid")
                     if br and bh and bh.Health > 0 then
                         currentTargetName, activeAttackEntity, currentFarmCFrame = boss.Name, boss, br.CFrame
-                        local animator = bh:FindFirstChild("Animator")
-                        if animator then animator:Destroy() end
-                        
                         local tPos = br.CFrame * CFrame.new(0, Config.FarmDistance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
                         DiChuyenDen(tPos)
                         return
@@ -812,9 +1108,6 @@ task.spawn(function()
                         
                         -- Kiểm tra theo dõi sát thương lên quái
                         checkDamageTracking(mob)
-                        
-                        local animator = mh:FindFirstChild("Animator")
-                        if animator then animator:Destroy() end
                         
                         local tPos = mr.CFrame * CFrame.new(0, Config.FarmDistance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
                         DiChuyenDen(tPos)
@@ -1088,6 +1381,80 @@ local function addDropdown(p, text, key, opts)
     end
 end
 
+local function addSwordSelector(p, text, key, opts)
+    local f = Instance.new("Frame", p)
+    f.Size = UDim2.new(1, -6, 0, 52)
+    f.BackgroundColor3 = Color3.fromRGB(25, 22, 35)
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
+    
+    local l = Instance.new("TextLabel", f)
+    l.Size = UDim2.new(1, -16, 0, 18)
+    l.Position = UDim2.new(0, 8, 0, 2)
+    l.BackgroundTransparency = 1
+    l.Text, l.TextColor3, l.Font, l.TextSize = text, Color3.fromRGB(220, 220, 230), Enum.Font.GothamBold, 10
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local c = Instance.new("Frame", f)
+    c.Size = UDim2.new(1, -16, 0, 24)
+    c.Position = UDim2.new(0, 8, 0, 22)
+    c.BackgroundTransparency = 1
+    
+    local prevBtn = Instance.new("TextButton", c)
+    prevBtn.Size = UDim2.new(0, 28, 1, 0)
+    prevBtn.Position = UDim2.new(0, 0, 0, 0)
+    prevBtn.BackgroundColor3 = Color3.fromRGB(40, 35, 55)
+    prevBtn.Text = "◀"
+    prevBtn.TextColor3 = Color3.fromRGB(255, 180, 50)
+    prevBtn.Font = Enum.Font.GothamBold
+    prevBtn.TextSize = 11
+    Instance.new("UICorner", prevBtn).CornerRadius = UDim.new(0, 4)
+    
+    local nextBtn = Instance.new("TextButton", c)
+    nextBtn.Size = UDim2.new(0, 28, 1, 0)
+    nextBtn.Position = UDim2.new(1, -28, 0, 0)
+    nextBtn.BackgroundColor3 = Color3.fromRGB(40, 35, 55)
+    nextBtn.Text = "▶"
+    nextBtn.TextColor3 = Color3.fromRGB(255, 180, 50)
+    nextBtn.Font = Enum.Font.GothamBold
+    nextBtn.TextSize = 11
+    Instance.new("UICorner", nextBtn).CornerRadius = UDim.new(0, 4)
+    
+    local valBtn = Instance.new("TextButton", c)
+    valBtn.Size = UDim2.new(1, -64, 1, 0)
+    valBtn.Position = UDim2.new(0, 32, 0, 0)
+    valBtn.BackgroundColor3 = Color3.fromRGB(35, 30, 48)
+    valBtn.Text = tostring(Config[key] or opts[1])
+    valBtn.TextColor3 = Color3.fromRGB(255, 220, 100)
+    valBtn.Font = Enum.Font.GothamBold
+    valBtn.TextSize = 10
+    Instance.new("UICorner", valBtn).CornerRadius = UDim.new(0, 4)
+    
+    local function getIndex()
+        for idx, opt in ipairs(opts) do
+            if opt == Config[key] then return idx end
+        end
+        return 1
+    end
+    
+    local function setIndex(newIdx)
+        if newIdx < 1 then newIdx = #opts end
+        if newIdx > #opts then newIdx = 1 end
+        Config[key] = opts[newIdx]
+        local display = tostring(Config[key])
+        if Config[key] ~= "Auto Next Unmastered" then
+            local mas = GetToolMastery(Config[key])
+            if mas > 0 then display = display .. " (Mas: " .. mas .. ")" end
+        end
+        valBtn.Text = display
+        saveSettings()
+        TrangBiVuKhi()
+    end
+    
+    prevBtn.MouseButton1Click:Connect(function() setIndex(getIndex() - 1) end)
+    nextBtn.MouseButton1Click:Connect(function() setIndex(getIndex() + 1) end)
+    valBtn.MouseButton1Click:Connect(function() setIndex(getIndex() + 1) end)
+end
+
 local function addButton(p, text, color, cb)
     local b = Instance.new("TextButton", p)
     b.Size = UDim2.new(1, -6, 0, 30)
@@ -1154,6 +1521,10 @@ local function addDashboard(p)
                 
                 if d.Open then
                     sLbl.Text, sLbl.TextColor3 = "🚪 Cổng Gương: ĐÃ MỞ!", Color3.fromRGB(0, 255, 200)
+                elseif Config.AutoSwitchSwordMastery or Config.WeaponType == "Sword" then
+                    local sName = currentFarmingSwordName or Config.SelectedSword or "Sword"
+                    local sMas = GetToolMastery(sName)
+                    sLbl.Text, sLbl.TextColor3 = string.format("🗡️ Kiếm: %s (Mastery: %d/%d)", tostring(sName), sMas, Config.TargetMastery or 600), Color3.fromRGB(255, 220, 100)
                 else
                     sLbl.Text, sLbl.TextColor3 = "🔒 Cổng Gương: CHƯA MỞ", Color3.fromRGB(255, 140, 140)
                 end
@@ -1184,20 +1555,28 @@ local T7 = addTab("Cài Đặt", "⚙️")
 -- Tab 1: Katakuri
 addDashboard(T1)
 addToggle(T1, "🍩 Kích Hoạt Auto Farm Katakuri", "AutoFarm")
+addToggle(T1, "🌐 Tự Đổi SV Tìm Server > 300 Quái (Auto Hop)", "AutoHopKatakuriServer")
 addToggle(T1, "💰 Tự Động Nhận Nhiệm Vụ (Beli)", "AutoQuest")
 addToggle(T1, "✨ Tự Động Gọi Boss (Auto Spawn)", "AutoSpawnBoss")
 addToggle(T1, "👑 Chỉ Đánh Boss Katakuri", "AutoKillBossOnly")
 addButton(T1, "🚀 Triệu Hồi Katakuri Ngay", Color3.fromRGB(255, 170, 40), function() pcall(function() CommF:InvokeServer("CakePrinceSpawner", true) end) end)
 
 -- Tab 2: Gom Quái & Chống Kẹt Quái
-addToggle(T2, "🌪️ Bật Gom Quái Siêu Tốc (Magnet)", "AutoBring")
+addToggle(T2, "🌪️ Bật Gom Quái (Auto Bring)", "AutoBring")
+addToggle(T2, "✨ Kéo Quái Bay Dần Dần (Smooth Pull)", "BringSmooth")
+addSlider(T2, "🚀 Tốc Độ Kéo Quái (Studs/s)", "BringSpeed", 50, 250, 10)
 addSlider(T2, "📍 Bán Kính Gom Quái (Studs)", "BringRadius", 100, 400, 20)
+addSlider(T2, "📏 Giới Hạn Cách Spawn (Leash Max)", "MaxLeashDistance", 100, 300, 10)
+addToggle(T2, "🔄 Tự Đưa Về Spawn Khi Quá Xa / Đơ", "AutoReturnToSpawn")
 addToggle(T2, "🛡️ Chống Quái Đơ (Bỏ Qua Sau 1 Phút Không Mất Máu)", "AntiStuckMob")
 
--- Tab 3: Tấn Công
+-- Tab 3: Tấn Công & Auto Mastery Sword
 addToggle(T3, "⚡ Đánh Siêu Nhanh (Fast Attack x4)", "FastAttack")
 addSlider(T3, "🚀 Hệ Số Đòn Đánh (Burst: 1x - 6x)", "AttackMultiplier", 1, 6, 1)
-addDropdown(T3, "🗡️ Vũ Khí Tự Trang Bị", "WeaponType", {"Melee", "Sword", "Blox Fruit", "Gun"})
+addDropdown(T3, "🗡️ Loại Vũ Khí Tự Trang Bị", "WeaponType", {"Melee", "Sword", "Blox Fruit", "Gun"})
+addToggle(T3, "⚔️ Auto Đổi Kiếm Khi Đạt 600 Mastery", "AutoSwitchSwordMastery")
+addSlider(T3, "🎯 Mốc Mastery Để Đổi Kiếm", "TargetMastery", 100, 600, 50)
+addSwordSelector(T3, "🗡️ Kiếm Farm Khởi Đầu (Hoặc Auto)", "SelectedSword", MasterSwordList)
 
 -- Tab 4: Haki & Tộc
 addToggle(T4, "🛡️ Tự Bật Haki Vũ Trang (Buso)", "AutoBuso")
